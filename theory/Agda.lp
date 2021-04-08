@@ -1,0 +1,48 @@
+(; Sorts ;)
+
+constant symbol Sort : TYPE;
+
+constant symbol set  : univ.Lvl -> Sort;
+constant symbol prop : univ.Lvl -> Sort;
+constant symbol sortOmega : Sort;
+
+(; Universe successors ;)
+symbol axiom : Sort -> Sort;
+rule axiom (set $i)  --> set (univ.s $i)
+with axiom (prop $i) --> set (univ.s $i);
+
+(; Universe product rules ;)
+symbol rule : Sort -> Sort -> Sort;
+rule   rule (set i)  (set j)   --> set  (univ.max i j).
+[i, j] rule (set i)  (prop j)  --> prop (univ.max i j).
+[i, j] rule (prop i) (set j)   --> set  (univ.max i j).
+[i, j] rule (prop i) (prop j)  --> prop (univ.max i j).
+[]     rule _        sortOmega --> sortOmega.
+
+(; Types and terms ;)
+
+Univ : s : Sort -> Type.
+def Term : s : Sort -> a : Univ s -> Type.
+
+code : s : Sort -> Univ (axiom s).
+prod : s1 : Sort -> s2 : Sort -> A : Univ s1 -> B : (Term s1 A -> Univ s2) -> Univ (rule s1 s2).
+proj_prod : s1 : Sort -> s2 : Sort -> A : Univ s1 -> B : (Term s1 A -> Univ s2) -> Univ (rule s1 s2).
+
+qLevel : f: (univ.Lvl -> Sort) -> (l : univ.Lvl -> Univ (f l)) -> Univ sortOmega.
+
+[s] Term _ (code s) --> Univ s.
+[f, t] Term _ (qLevel f t) --> l : univ.Lvl -> Term (f l) (t l).
+
+def etaExpand : (l : univ.Lvl) -> (A : Univ (set l)) -> Term (set l) A -> Term (set l) A.
+
+[a, b, A, B] Term _ (prod (set a) b A B) --> x : Term (set a) A -> Term b (B (etaExpand a A x)).
+[a, b, A, B] Term _ (prod (prop a) b A B) --> x : Term (prop a) A -> Term b (B x).
+[a, b, A, B] Term _ (proj_prod a  b A B) --> x : Term a A -> Term b (B x).
+
+[l,A,x] etaExpand _ _ (etaExpand l A x) --> etaExpand l A x.
+[x] etaExpand _ (code _) x --> x.
+
+[a,A,b,B,f] etaExpand _ (prod (set a)  (set b)  A B) f --> x : Term (set  a) A => etaExpand b (B (etaExpand a A x)) (f (etaExpand a A x)).
+[a,A,b,B,f] etaExpand _ (prod (prop a) (set b)  A B) f --> x : Term (prop a) A => etaExpand b (B x) (f x).
+
+[a,A,b,B,f] etaExpand _ (proj_prod a (set b) A B) f --> x : Term a A => etaExpand b (B x) (f x).
