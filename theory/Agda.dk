@@ -12,12 +12,12 @@ def axiom : Sort -> Sort.
 [i] axiom (prop i) --> set (univ.s i).
 
 (; Universe product rules ;)
-def rule : Sort -> Sort -> Sort.
-[i, j] rule (set i)  (set j)   --> set  (univ.max i j).
-[i, j] rule (set i)  (prop j)  --> prop (univ.max i j).
-[i, j] rule (prop i) (set j)   --> set  (univ.max i j).
-[i, j] rule (prop i) (prop j)  --> prop (univ.max i j).
-[]     rule _        sortOmega --> sortOmega.
+def sortRule : Sort -> Sort -> Sort.
+[i, j] sortRule (set i)  (set j)   --> set  (univ.max i j).
+[i, j] sortRule (set i)  (prop j)  --> prop (univ.max i j).
+[i, j] sortRule (prop i) (set j)   --> set  (univ.max i j).
+[i, j] sortRule (prop i) (prop j)  --> prop (univ.max i j).
+[]     sortRule _        sortOmega --> sortOmega.
 
 (; Types and terms ;)
 
@@ -25,8 +25,8 @@ Univ : s : Sort -> Type.
 def Term : s : Sort -> a : Univ s -> Type.
 
 code : s : Sort -> Univ (axiom s).
-prod : s1 : Sort -> s2 : Sort -> A : Univ s1 -> B : (Term s1 A -> Univ s2) -> Univ (rule s1 s2).
-proj_prod : s1 : Sort -> s2 : Sort -> A : Univ s1 -> B : (Term s1 A -> Univ s2) -> Univ (rule s1 s2).
+prod : s1 : Sort -> s2 : Sort -> A : Univ s1 -> B : (Term s1 A -> Univ s2) -> Univ (sortRule s1 s2).
+proj_prod : s1 : Sort -> s2 : Sort -> A : Univ s1 -> B : (Term s1 A -> Univ s2) -> Univ (sortRule s1 s2).
 
 qLevel : f: (univ.Lvl -> Sort) -> (l : univ.Lvl -> Univ (f l)) -> Univ sortOmega.
 

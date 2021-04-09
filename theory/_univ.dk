@@ -24,11 +24,11 @@ Lvl : Type.
 LvlSet : Type.
 
 (; The grammar we are interested in is
-   t,u ::= x | 0 | s t | max t u
+   t,u ::= x | zero | s t | max t u
 with x a variable. ;)
 
 (; Nothing is definable, since it is purely syntax. ;)
-def 0 : Lvl.
+def zero : Lvl.
 def s : Lvl -> Lvl.
 def max : Lvl -> Lvl -> Lvl.
 
@@ -58,6 +58,6 @@ def mapPlus : Nat -> LvlSet -> LvlSet.
 [x] Max 0_N (Plus 0_N x) --> x.
 
 (; The reflection of the syntax on Lvl. ;)
-[]    0       --> Max 0_N Empty.
+[]    zero    --> Max 0_N Empty.
 [x]   s x     --> Max 1_N (Plus 1_N x).
 [x,y] max x y --> Max 0_N (Union (Plus 0_N x) (Plus 0_N y)).

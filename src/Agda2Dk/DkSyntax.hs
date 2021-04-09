@@ -44,7 +44,7 @@ printDecl mods (DkDefinition {name=n, staticity=b, typ=t, kind=k}) =
           DkQualified ["Agda", "Primitive"] [] "Level" ->
             text "[] Agda.Term _ Level --> univ.Lvl.\n"
           DkQualified ["Agda", "Primitive"] [] "lzero" ->
-            text "[] lzero --> univ.0.\n"
+            text "[] lzero --> univ.zero.\n"
           DkQualified ["Agda", "Primitive"] [] "lsuc"  ->
             text "[] lsuc --> univ.s.\n"
           DkQualified ["Agda", "Primitive"] [] "_⊔_"   ->
@@ -82,7 +82,7 @@ printLvl :: DkModName -> Lvl -> Doc
 printLvl mods l =
   printPreLvlList mods l
 
-printPreLvlList mods []     = text "univ.0"
+printPreLvlList mods []     = text "univ.zero"
 printPreLvlList mods (a:[]) = prettyDk mods a
 printPreLvlList mods (a:tl) =
   parens $ text "univ.max" <+> prettyDk mods a <+> printPreLvlList mods tl
@@ -100,7 +100,7 @@ instance PrettyDk PreLvl where
 
 unary :: Int -> Doc
 unary x
-  | x==0 = text "univ.0"
+  | x==0 = text "univ.zero"
   | x>0  = parens $ (text "univ.s")<+> (unary (x-1))
 
 data DkSort =
@@ -246,12 +246,12 @@ fromBuiltinString s =
 
 fromBuiltinListOfChar []     =
   let nil = DkConst $ DkQualified ["Agda", "Builtin", "List"] ["List"] "[]" in
-  let lvl0 = DkConst $ DkQualified ["univ"] [] "0" in
+  let lvl0 = DkConst $ DkQualified ["univ"] [] "zero" in
   let char_type = DkConst $ DkQualified ["Agda", "Builtin", "Char"] [] "Char" in
   DkApp (DkApp nil lvl0) char_type
 fromBuiltinListOfChar (c:tl) =
   let cons = DkConst $ DkQualified ["Agda", "Builtin", "List"] ["List"] "_∷_" in
-  let lvl0 = DkConst $ DkQualified ["univ"] [] "0" in
+  let lvl0 = DkConst $ DkQualified ["univ"] [] "zero" in
   let char_type = DkConst $ DkQualified ["Agda", "Builtin", "Char"] [] "Char" in
   DkApp (DkApp (DkApp (DkApp cons lvl0) char_type) (fromBuiltinChar c)) (fromBuiltinListOfChar tl)
 
