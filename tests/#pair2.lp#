@@ -1,0 +1,5 @@
+TYPE__X : TYPE;
+X : Agda.Term (Agda.set (univ.s univ.zero)) (Agda.code (Agda.set univ.zero));
+Agda;Term _ X ↪ TYPE__X;
+X__arr : Agda.Term (Agda.set univ.zero) (Agda.prod (Agda.set univ.zero) (Agda.set univ.zero) X (λ  _0 ,  Agda.prod (Agda.set univ.zero) (Agda.set univ.zero) X (λ  _0 ,  X)));
+[x0, x] Agda;etaExpand _ X (X__arr x0 x) ↪ X__arr (Agda;etaExpand univ.zero X x0) (Agda;etaExpand univ.zero X x);

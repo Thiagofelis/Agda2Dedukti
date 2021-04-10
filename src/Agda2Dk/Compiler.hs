@@ -158,7 +158,7 @@ filePath opts mods =
                                   Just s  -> s
   in
   let mod = dropAll (intercalate "__" concMods) in
-  dir++mod++".dk"
+  dir++mod++".lp"
 
 orderDeclRules :: [(Int32,DkDocs)] -> DkModName -> TCM Doc
 orderDeclRules l mods = orderDeclRules' 0 mods empty empty empty (sortOn fst l)

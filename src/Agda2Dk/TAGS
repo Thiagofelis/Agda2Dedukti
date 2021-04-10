@@ -1,5 +1,5 @@
 
-./DkSyntax.hs,3019
+./DkSyntax.hs,3153
 module Agda2Dk.DkSyntax Agda2Dk.DkSyntax0,1
 type DkModName DkModName19,20
 type DkIdent DkIdent21,22
@@ -43,59 +43,63 @@ data DkRule DkRule128,129
     , rhs rhs134,135
 instance PrettyDk PrettyDk DkRule137,138
   prettyDk prettyDk138,139
-usedIndex usedIndex143,144
-data DkTerm DkTerm149,150
-    DkSort DkSort150,151
-  | DkProd DkProd151,152
-  | DkProjProd DkProjProd152,153
-  | DkQuantifLevel DkQuantifLevel153,154
-  | DkConst DkConst154,155
-  | DkApp DkApp155,156
-  | DkLam DkLam156,157
-  | DkDB DkDB157,158
-  | DkLevel DkLevel158,159
-  | DkBuiltin DkBuiltin159,160
-printTerm printTerm161,162
-data DkBuiltin DkBuiltin217,218
-    DkNat DkNat218,219
-  | DkChar DkChar219,220
-  | DkString DkString220,221
-printBuiltin printBuiltin222,223
-fromBuiltinNat fromBuiltinNat230,231
-fromBuiltinChar fromBuiltinChar236,237
-fromBuiltinString fromBuiltinString241,242
-fromBuiltinListOfChar fromBuiltinListOfChar246,247
-paren paren257,258
-data DkPattern DkPattern263,264
-    DkVar DkVar264,265
-  | DkFun DkFun265,266
-  | DkLambda DkLambda266,267
-  | DkPattBuiltin DkPattBuiltin267,268
-  | DkGuarded DkGuarded268,269
-  | DkJokerDkJoker269,270
-printPattern printPattern271,272
-type DkCtx DkCtx295,296
-printContext printContext297,298
-data DkName DkName307,308
-    DkLocal DkLocal308,309
-  | DkQualified DkQualified309,310
-instance PrettyDk PrettyDk DkName312,313
-  prettyDk prettyDk313,314
-printIdent printIdent324,325
-data IsStatic IsStatic327,328
-data IsStatic = Static Static327,328
-data IsStatic = Static | Defin Defin327,328
-data IsStatic = Static | Defin | TypeConstrTypeConstr327,328
-keywords keywords329,330
-encapsulate encapsulate331,332
-dropAll dropAll337,338
-data Position Position344,345
-data Position = Nested Nested344,345
-data Position = Nested | TopTop344,345
-termOfPattern termOfPattern346,347
-multiApp multiApp353,354
-type DkDocs DkDocs357,358
-toDkDocs toDkDocs359,360
+usedIndex usedIndex151,152
+data DkTerm DkTerm157,158
+    DkSort DkSort158,159
+  | DkProd DkProd159,160
+  | DkProjProd DkProjProd160,161
+  | DkQuantifLevel DkQuantifLevel161,162
+  | DkConst DkConst162,163
+  | DkApp DkApp163,164
+  | DkLam DkLam164,165
+  | DkDB DkDB165,166
+  | DkLevel DkLevel166,167
+  | DkBuiltin DkBuiltin167,168
+printTerm printTerm169,170
+printTerm' printTerm'174,175
+data DkBuiltin DkBuiltin230,231
+    DkNat DkNat231,232
+  | DkChar DkChar232,233
+  | DkString DkString233,234
+printBuiltin printBuiltin235,236
+fromBuiltinNat fromBuiltinNat243,244
+fromBuiltinChar fromBuiltinChar249,250
+fromBuiltinString fromBuiltinString254,255
+fromBuiltinListOfChar fromBuiltinListOfChar259,260
+paren paren270,271
+data DkPattern DkPattern276,277
+    DkVar DkVar277,278
+  | DkFun DkFun278,279
+  | DkLambda DkLambda279,280
+  | DkPattBuiltin DkPattBuiltin280,281
+  | DkGuarded DkGuarded281,282
+  | DkJokerDkJoker282,283
+printPattern printPattern284,285
+printPattern' printPattern'289,290
+type DkCtx DkCtx313,314
+getVarNames getVarNames316,317
+printContext printContext326,327
+data DkName DkName336,337
+    DkLocal DkLocal337,338
+  | DkQualified DkQualified338,339
+instance PrettyDk PrettyDk DkName341,342
+  prettyDk prettyDk342,343
+printIdent printIdent352,353
+printIdent' printIdent'357,358
+data IsStatic IsStatic364,365
+data IsStatic = Static Static364,365
+data IsStatic = Static | Defin Defin364,365
+data IsStatic = Static | Defin | TypeConstrTypeConstr364,365
+keywords keywords367,368
+encapsulate encapsulate369,370
+dropAll dropAll375,376
+data Position Position382,383
+data Position = Nested Nested382,383
+data Position = Nested | TopTop382,383
+termOfPattern termOfPattern384,385
+multiApp multiApp391,392
+type DkDocs DkDocs395,396
+toDkDocs toDkDocs397,398
 
 ./Compiler.hs,2103
 module Agda2Dk.Compiler Agda2Dk.Compiler2,3

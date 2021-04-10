@@ -1,5 +1,5 @@
 .POSIX:
-SRC = 
+SRC = Agda.lp univ.lp
 OBJ = $(SRC:.lp=.lpo)
 .SUFFIXES:
 

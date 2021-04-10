@@ -42,36 +42,36 @@ printDecl mods (DkDefinition {name=n, staticity=b, typ=t, kind=k}) =
   let special =
         case n of
           DkQualified ["Agda", "Primitive"] [] "Level" ->
-            text "[] Agda.Term _ Level --> univ.Lvl.\n"
+            text "rule Agda.Term _ Level ↪ univ.Lvl;\n"
           DkQualified ["Agda", "Primitive"] [] "lzero" ->
-            text "[] lzero --> univ.zero.\n"
+            text "rule lzero ↪ univ.zero;\n"
           DkQualified ["Agda", "Primitive"] [] "lsuc"  ->
-            text "[] lsuc --> univ.s.\n"
+            text "rule lsuc ↪ univ.s;\n"
           DkQualified ["Agda", "Primitive"] [] "_⊔_"   ->
-            text "[] {|_⊔_|} --> univ.max.\n"
+            text "rule {|_⊔_|} ↪ univ.max;\n"
           otherwise                                    -> empty
   in
   let kw =
         case b of
-          Defin      -> text "def "
+          Defin      -> text ""
           TypeConstr -> printDecodedDecl mods n t
-          Static     -> empty
+          Static     -> text ""
   in
   let typDecl = printSort Nested mods k <+> printTerm Nested mods t in
-  kw <> prettyDk mods n <+> text ": Agda.Term" <+> typDecl <> text ".\n" <> special
+    kw <> text "symbol" <+> prettyDk mods n <+> text ": Agda.Term" <+> typDecl <> text ";\n" <> special
 
 printDecodedDecl :: DkModName -> DkName -> DkTerm -> Doc
 printDecodedDecl mods (DkQualified _ pseudo id) t =
   let ident = "TYPE__" ++ (concat (map (++ "__") pseudo)) ++ id in
-  printIdent ident <+> char ':' <+> decodedType mods t <> text ".\n"
+  text "symbol" <+> printIdent ident <+> char ':' <+> decodedType mods t <> text ";\n"
 
 decodedType :: DkModName -> DkTerm -> Doc
-decodedType mods (DkSort _)              = text "Type"
+decodedType mods (DkSort _)              = text "TYPE"
 decodedType mods (DkProd s1 _ id t u)    =
   let domDecl = printSort Nested mods s1 <+> printTerm Nested mods t in
-  parens (printIdent id <+> text ": Agda.Term" <+> domDecl) <+> text "->" <+> decodedType mods u
+  parens (printIdent id <+> text ": Agda.Term" <+> domDecl) <+> text "→" <+> decodedType mods u
 decodedType mods (DkQuantifLevel _ id t) =
-  parens (printIdent id <+> text ": univ.Lvl") <+> text "->" <+> decodedType mods t
+  parens (printIdent id <+> text ": univ.Lvl") <+> text "→" <+> decodedType mods t
 
 printRules :: DkModName -> DkDefinition -> (DkRule -> Bool) -> [Doc]
 printRules mods (DkDefinition {rules=l}) f = map (prettyDk mods) (filter f l)
@@ -137,10 +137,18 @@ data DkRule =
 
 instance PrettyDk DkRule where
   prettyDk mods (DkRule {context=c, headsymb=hd, patts=patts, rhs=rhs}) =
-    let varList = concat (map usedIndex patts) in
-    let lhs = prettyDk mods hd <+> hsep (map (printPattern Nested mods) patts) in
-    printContext varList c <+> lhs <+> text "-->" <+> printTerm Top mods rhs <> text ".\n"
+    -- gets the indices of the free variables of the rule
+    let freeVarList = concat (map usedIndex patts) in
+    -- converts the indices of the vars to names
+    let freeVarNames = getVarNames freeVarList c in
+    -- prints the lhs
+    let lhs = prettyDk mods hd <+> hsep (map (printPattern' Nested mods freeVarNames) patts) in
+    -- prints the rhs
+    let rhs' = printTerm' Top mods freeVarNames rhs in
+    text "rule" <+> lhs <+> text "↪" <+> rhs' <> text ";\n"      
 
+
+-- returns the indices of variables appearing free in a pattern
 usedIndex :: DkPattern -> [Int]
 usedIndex (DkVar _ i l)  = i:(concat (map usedIndex l))
 usedIndex (DkFun f l)  = concat (map usedIndex l)
@@ -160,34 +168,39 @@ data DkTerm =
   | DkBuiltin DkBuiltin
 
 printTerm :: Position -> DkModName -> DkTerm -> Doc
-printTerm pos mods (DkSort s)               =
+printTerm pos mods t = printTerm' pos mods [] t
+
+-- this version takes as ruleVars a list of the names of variables which should be
+-- printed with a '$' before it
+printTerm' :: Position -> DkModName -> [DkIdent] -> DkTerm -> Doc
+printTerm' pos mods ruleVars (DkSort s)               =
   paren pos $
     text "Agda.code" <+> printSort Nested mods s
-printTerm pos mods (DkProd s1 s2 n t u)     =
+printTerm' pos mods ruleVars (DkProd s1 s2 n t u)     =
   let sorts = printSort Nested mods s1 <+> printSort Nested mods s2 in
-  let domain =  printTerm Nested mods t in
-  let codomain = parens (printIdent n <+> text "=>" <+> printTerm Top mods u) in
+  let domain =  printTerm' Nested mods ruleVars t in
+  let codomain = parens (text "λ" <+> printIdent n <+> text "," <+> printTerm' Top mods ruleVars u) in
   paren pos $
     text "Agda.prod" <+> sorts <+> domain <+> codomain
-printTerm pos mods (DkProjProd s1 s2 n t u)     =
+printTerm' pos mods ruleVars (DkProjProd s1 s2 n t u)     =
   let sorts = printSort Nested mods s1 <+> printSort Nested mods s2 in
-  let domain =  printTerm Nested mods t in
-  let codomain = parens (printIdent n <+> text "=>" <+> printTerm Top mods u) in
+  let domain =  printTerm' Nested mods ruleVars t in
+  let codomain = parens (text "λ" <+> printIdent n <+> text "," <+> printTerm' Top mods ruleVars u) in
   paren pos $
     text "Agda.proj_prod" <+> sorts <+> domain <+> codomain
-printTerm pos mods (DkQuantifLevel s n u)   =
-  let sorts = parens (printIdent n <+> text "=>" <+> printSort Top mods s) in
-  let codomain = parens (printIdent n <+> text "=>" <+> printTerm Top mods u) in
+printTerm' pos mods ruleVars (DkQuantifLevel s n u)   =
+  let sorts = parens (text "λ" <+> printIdent n <+> text "," <+> printSort Top mods s) in
+  let codomain = parens (text "λ" <+> printIdent n <+> text "," <+> printTerm' Top mods ruleVars u) in
   paren pos $
     text "Agda.qLevel" <+> sorts <+> codomain
-printTerm pos mods  (DkConst f)             =
+printTerm' pos mods ruleVars (DkConst f)             =
   prettyDk mods f
-printTerm pos mods (DkApp t u)              =
+printTerm' pos mods ruleVars (DkApp t u)              =
   case t of
     DkApp (DkApp (DkConst n) s) ty | n == etaExpandSymb ->
       case u of
         DkApp (DkApp (DkApp (DkConst n2) s2) ty2) v | n2 == etaExpandSymb ->
-          printTerm pos mods $ DkApp (DkApp (DkApp (DkConst n) s) ty) v
+          printTerm' pos mods ruleVars $ DkApp (DkApp (DkApp (DkConst n) s) ty) v
         otherwise -> defaultCase
     otherwise -> defaultCase
   where
@@ -199,20 +212,20 @@ printTerm pos mods (DkApp t u)              =
               otherwise -> Top
       in
       paren pos $
-        printTerm tPos mods t <+> printTerm Nested mods u
-printTerm pos mods (DkLam n Nothing t)      =
+        printTerm' tPos mods ruleVars t <+> printTerm' Nested mods ruleVars u
+printTerm' pos mods ruleVars (DkLam n Nothing t)      =
   paren pos $
-    printIdent n <+> text "=>" <+> printTerm Top mods t
-printTerm pos mods (DkLam n (Just (a,s)) t) =
-  let typCode = printTerm Nested mods a in
+    text "λ" <+> printIdent n <+> text "," <+> printTerm' Top mods ruleVars t
+printTerm' pos mods ruleVars (DkLam n (Just (a,s)) t) =
+  let typCode = printTerm' Nested mods ruleVars a in
   let annot = text "Agda.Term" <+> printSort Nested mods s <+> typCode in
   paren pos $
-    printIdent n <+> char ':' <+> annot <+> text "=>" <+> printTerm Top mods t
-printTerm pos mods (DkDB n _)               =
-  printIdent n
-printTerm pos mods (DkLevel l)              =
+    text "λ" <+> printIdent n <+> char ':' <+> annot <+> text "," <+> printTerm' Top mods ruleVars t -- NOT SURE HERE
+printTerm' pos mods ruleVars (DkDB n _)               =
+  printIdent' ruleVars n
+printTerm' pos mods ruleVars (DkLevel l)              =
   printPreLvlList mods l
-printTerm pos mods (DkBuiltin b)            =
+printTerm' pos mods ruleVars (DkBuiltin b)            =
   printBuiltin pos mods b
 
 data DkBuiltin =
@@ -270,31 +283,47 @@ data DkPattern =
   | DkJoker
 
 printPattern ::   Position -> DkModName -> DkPattern -> Doc
-printPattern pos mods (DkVar n _ [])  =
-  printIdent n
-printPattern pos mods (DkVar n _ l)  =
+printPattern pos mods patt = printPattern' pos mods [] patt
+
+-- this version takes as ruleVars a list of the names of variables which should be
+-- printed with a '$' before it
+printPattern' ::   Position -> DkModName -> [DkIdent] -> DkPattern -> Doc
+printPattern' pos mods ruleVars (DkVar n _ [])  =
+  printIdent' ruleVars n
+printPattern' pos mods ruleVars (DkVar n _ l)  =
   paren pos $
-    printIdent n <+> hsep (map (printPattern Nested mods) l)
-printPattern pos mods (DkFun n [])    =
+    printIdent' ruleVars n <+> hsep (map (printPattern' Nested mods ruleVars) l)
+printPattern' pos mods ruleVars (DkFun n [])    =
   prettyDk mods n
-printPattern pos mods (DkFun n l)    =
+printPattern' pos mods ruleVars (DkFun n l)    =
   paren pos $
-    prettyDk mods n <+> hsep (map (printPattern Nested mods) l)
-printPattern pos mods (DkLambda n t) =
+    prettyDk mods n <+> hsep (map (printPattern' Nested mods ruleVars) l)
+printPattern' pos mods ruleVars (DkLambda n t) =
   paren pos $
-    printIdent n <+> text "=>" <+> printPattern Top mods t
-printPattern pos mods (DkPattBuiltin t) =
+    text "λ" <+> printIdent n <+> text ", " <+> printPattern' Top mods ruleVars t
+printPattern' pos mods ruleVars (DkPattBuiltin t) =
   printTerm pos mods t
 -- We do not guard variables, since non-linear rules are more efficient.
-printPattern pos mods (DkGuarded (DkDB n _)) =
+printPattern' pos mods ruleVars (DkGuarded (DkDB n _)) =
   printIdent n
-printPattern pos mods (DkGuarded t) =
+printPattern' pos mods ruleVars (DkGuarded t) =
   braces (printTerm Top mods t)
-printPattern pos mods DkJoker =
+printPattern' pos mods ruleVars DkJoker =
   char '_'
 
 type DkCtx = [DkIdent]
 
+-- takes indices of variables and returns their names under the given context
+getVarNames :: [Int] -> DkCtx -> [DkIdent]
+getVarNames used l =
+  extractIndex 0 (sortUniq used) l
+  where
+    extractIndex _ []     _        = []
+    extractIndex a (b:tl) (x:vars)
+      | a==b      = x:(extractIndex (a+1) tl vars)
+      | otherwise = extractIndex (a+1) (b:tl) vars
+
+-- prints the [x, y, z] before the rules
 printContext :: [Int] -> DkCtx -> Doc
 printContext used l =
   let ll = extractIndex 0 (sortUniq used) l in
@@ -311,7 +340,7 @@ data DkName =
   deriving (Eq, Show)
 
 instance PrettyDk DkName where
-  prettyDk mods (DkLocal n)            = printIdent n
+  prettyDk mods (DkLocal n)            = (printIdent n) -- not here...
   prettyDk mods (DkQualified qualif pseudo n) =
     let modName =
           if mods == qualif
@@ -321,13 +350,22 @@ instance PrettyDk DkName where
     let symName = printIdent $ (concat (map (++ "__") pseudo)) ++ n in
     modName <> symName
 
+printIdent :: DkIdent -> Doc
+printIdent n = printIdent' [] n
 
-printIdent n=
-    text $ encapsulate n
+-- this version takes as l a list of vars which are printed
+-- with a '$' before it
+printIdent' :: [DkIdent] -> DkIdent -> Doc
+printIdent' l n = if elem n l
+                  then text $ "$" ++ (encapsulate n)
+                  else text $ encapsulate n
+
+
 
 data IsStatic = Static | Defin | TypeConstr
 
-keywords = ["Type", "def", "thm", "injective", "defac", "defacu"]
+--keywords = ["Type", "def", "thm", "injective", "defac", "defacu"]
+keywords = ["TYPE", "def", "thm", "injective", "defac", "defacu", "symbol", "const"]
 
 encapsulate :: String -> String
 encapsulate l =
