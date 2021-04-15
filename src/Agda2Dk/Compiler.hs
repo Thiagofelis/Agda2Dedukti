@@ -129,17 +129,21 @@ dkCommandLineFlags =
 type DkModuleEnv = (ModuleName, QName)
 
 dkPreModule :: DkOptions -> IsMain -> ModuleName -> FilePath -> TCM (Recompile DkModuleEnv ())
-dkPreModule opts _ mods _ =
+dkPreModule opts _ mods fp =
   let path = filePath opts mods in
   do
     name <- createEtaExpandSymbol ()
     liftIO $
       ifM (((not (optDkRegen opts)) &&) <$> (doesFileExist path))
       (return (Skip ()))
-      (do putStrLn $ "Generation of "++path
+      (do putStrLn $ "Generation of "++ path
           return (Recompile (mods, name)))
 
 dkPostModule :: DkOptions -> DkModuleEnv -> IsMain -> ModuleName -> [DkCompiled] -> TCM ()
+-- mods: name of the module, with submodules given as list, as in
+--       [Agda, Builtin, Sigma]
+-- defs: list of compiled definitions, which are 3-uples containing declarations of
+--       types, constructors and rules
 dkPostModule opts _ _ mods defs =
   let concMods = modName2DkModIdent mods in
   do
@@ -147,6 +151,7 @@ dkPostModule opts _ _ mods defs =
     output <- orderDeclRules (catMaybes defs) concMods
     liftIO $
       do
+--        putStrLn $ case menv of (s,n) -> concat $  modName2DkModIdent s
         ss <- return $ show output
         writeFile (filePath opts mods) ss
 
@@ -169,18 +174,22 @@ orderDeclRules l mods = orderDeclRules' 0 mods empty empty empty (sortOn fst l)
 -- accOther contains constructors declarations.
 -- accRules contains rules.
 -- In this function, we can rely on the mutuality, because a type constructor is considered mutual with its constructors.
+
 orderDeclRules' :: Int32 -> DkModName -> Doc -> Doc -> Doc -> [(Int32,DkDocs)] -> TCM Doc
+
 orderDeclRules' mut mods accTy accOther accRules []                 =
   return $ accTy <> accOther <> accRules
+
 orderDeclRules' mut mods accTy accOther accRules l@((m,(a,b,c)):tl)
-  | m==mut =
-      orderDeclRules' mut mods
-            (accTy    <> a)
-            (accOther <> b)
-            (accRules <> c)
-            tl
-  | otherwise =
-      orderDeclRules' m mods (accTy <> accOther <> accRules) empty empty l
+-- The current def is mutual with the identifier mut
+  | m==mut =  orderDeclRules' mut mods
+              (accTy    <> a)
+              (accOther <> b)
+              (accRules <> c)
+              tl
+-- No more definitions have the id equal to mut, we now take the
+-- id of the next element on the list, which is m
+  | otherwise = orderDeclRules' m mods (accTy <> accOther <> accRules) empty empty l
 
 ------------------------------------------------------------------------------
 -- The main function --

@@ -1,105 +1,104 @@
 
-./DkSyntax.hs,3153
+./DkSyntax.hs,3125
 module Agda2Dk.DkSyntax Agda2Dk.DkSyntax0,1
-type DkModName DkModName19,20
-type DkIdent DkIdent21,22
-class PrettyDk PrettyDk23,24
-  prettyDk prettyDk24,25
-data DkDefinition DkDefinition26,27
-   DkDefinitionDkDefinition27,28
-    { name name28,29
-    , staticity staticity29,30
-    , typ typ30,31
-    , kind kind31,32
-    , rules rules32,33
-etaExpandSymb etaExpandSymb36,37
-printDecl printDecl39,40
-printDecodedDecl printDecodedDecl62,63
-decodedType decodedType67,68
-printRules printRules75,76
-type Lvl Lvl78,79
-printLvl printLvl80,81
-printPreLvlList printPreLvlList84,85
-data PreLvl PreLvl89,90
-    LvlInt LvlInt90,91
-  | LvlPlus LvlPlus91,92
-instance PrettyDk PrettyDk PreLvl93,94
- prettyDk prettyDk94,95
-unary unary100,101
-data DkSort DkSort105,106
-    DkSet DkSet106,107
-  | DkProp DkProp107,108
-  | DkSetOmegaDkSetOmega108,109
-  | DkUniv DkUniv109,110
-  | DkPi DkPi110,111
-  | DkDefaultSortDkDefaultSort111,112
-printSort printSort113,114
-data DkRule DkRule128,129
-   DkRuleDkRule129,130
-    { decoding decoding130,131
-    , context context131,132
-    , headsymb headsymb132,133
-    , patts patts133,134
-    , rhs rhs134,135
-instance PrettyDk PrettyDk DkRule137,138
-  prettyDk prettyDk138,139
-usedIndex usedIndex151,152
-data DkTerm DkTerm157,158
-    DkSort DkSort158,159
-  | DkProd DkProd159,160
-  | DkProjProd DkProjProd160,161
-  | DkQuantifLevel DkQuantifLevel161,162
-  | DkConst DkConst162,163
-  | DkApp DkApp163,164
-  | DkLam DkLam164,165
-  | DkDB DkDB165,166
-  | DkLevel DkLevel166,167
-  | DkBuiltin DkBuiltin167,168
-printTerm printTerm169,170
-printTerm' printTerm'174,175
-data DkBuiltin DkBuiltin230,231
-    DkNat DkNat231,232
-  | DkChar DkChar232,233
-  | DkString DkString233,234
-printBuiltin printBuiltin235,236
-fromBuiltinNat fromBuiltinNat243,244
-fromBuiltinChar fromBuiltinChar249,250
-fromBuiltinString fromBuiltinString254,255
-fromBuiltinListOfChar fromBuiltinListOfChar259,260
-paren paren270,271
-data DkPattern DkPattern276,277
-    DkVar DkVar277,278
-  | DkFun DkFun278,279
-  | DkLambda DkLambda279,280
-  | DkPattBuiltin DkPattBuiltin280,281
-  | DkGuarded DkGuarded281,282
-  | DkJokerDkJoker282,283
-printPattern printPattern284,285
-printPattern' printPattern'289,290
-type DkCtx DkCtx313,314
-getVarNames getVarNames316,317
-printContext printContext326,327
-data DkName DkName336,337
-    DkLocal DkLocal337,338
-  | DkQualified DkQualified338,339
-instance PrettyDk PrettyDk DkName341,342
-  prettyDk prettyDk342,343
-printIdent printIdent352,353
-printIdent' printIdent'357,358
-data IsStatic IsStatic364,365
-data IsStatic = Static Static364,365
-data IsStatic = Static | Defin Defin364,365
-data IsStatic = Static | Defin | TypeConstrTypeConstr364,365
-keywords keywords367,368
-encapsulate encapsulate369,370
-dropAll dropAll375,376
-data Position Position382,383
-data Position = Nested Nested382,383
-data Position = Nested | TopTop382,383
-termOfPattern termOfPattern384,385
-multiApp multiApp391,392
-type DkDocs DkDocs395,396
-toDkDocs toDkDocs397,398
+type DkModName DkModName20,21
+type DkIdent DkIdent22,23
+class PrettyDk PrettyDk24,25
+  prettyDk prettyDk25,26
+data DkDefinition DkDefinition27,28
+   DkDefinitionDkDefinition28,29
+    { name name29,30
+    , staticity staticity30,31
+    , typ typ31,32
+    , kind kind32,33
+    , rules rules33,34
+etaExpandSymb etaExpandSymb37,38
+printDecl printDecl40,41
+printDecodedDecl printDecodedDecl63,64
+decodedType decodedType68,69
+printRules printRules76,77
+type Lvl Lvl79,80
+printLvl printLvl81,82
+printPreLvlList printPreLvlList85,86
+data PreLvl PreLvl91,92
+    LvlInt LvlInt92,93
+  | LvlPlus LvlPlus93,94
+prettyDk_preLvl prettyDk_preLvl95,96
+unary unary111,112
+data DkSort DkSort116,117
+    DkSet DkSet117,118
+  | DkProp DkProp118,119
+  | DkSetOmegaDkSetOmega119,120
+  | DkUniv DkUniv120,121
+  | DkPi DkPi121,122
+  | DkDefaultSortDkDefaultSort122,123
+printSort printSort124,125
+data DkRule DkRule139,140
+   DkRuleDkRule140,141
+    { decoding decoding141,142
+    , context context142,143
+    , headsymb headsymb143,144
+    , patts patts144,145
+    , rhs rhs145,146
+instance PrettyDk PrettyDk DkRule148,149
+  prettyDk prettyDk149,150
+usedIndex usedIndex162,163
+data DkTerm DkTerm168,169
+    DkSort DkSort169,170
+  | DkProd DkProd170,171
+  | DkProjProd DkProjProd171,172
+  | DkQuantifLevel DkQuantifLevel172,173
+  | DkConst DkConst173,174
+  | DkApp DkApp174,175
+  | DkLam DkLam175,176
+  | DkDB DkDB176,177
+  | DkLevel DkLevel177,178
+  | DkBuiltin DkBuiltin178,179
+printTerm printTerm180,181
+printTerm' printTerm'185,186
+data DkBuiltin DkBuiltin241,242
+    DkNat DkNat242,243
+  | DkChar DkChar243,244
+  | DkString DkString244,245
+printBuiltin printBuiltin246,247
+fromBuiltinNat fromBuiltinNat254,255
+fromBuiltinChar fromBuiltinChar260,261
+fromBuiltinString fromBuiltinString265,266
+fromBuiltinListOfChar fromBuiltinListOfChar270,271
+paren paren281,282
+data DkPattern DkPattern287,288
+    DkVar DkVar288,289
+  | DkFun DkFun289,290
+  | DkLambda DkLambda290,291
+  | DkPattBuiltin DkPattBuiltin291,292
+  | DkGuarded DkGuarded292,293
+  | DkJokerDkJoker293,294
+printPattern printPattern295,296
+printPattern' printPattern'300,301
+type DkCtx DkCtx324,325
+getVarNames getVarNames327,328
+printContext printContext337,338
+data DkName DkName347,348
+    DkLocal DkLocal348,349
+  | DkQualified DkQualified349,350
+instance PrettyDk PrettyDk DkName352,353
+  prettyDk prettyDk353,354
+printIdent printIdent363,364
+printIdent' printIdent'368,369
+data IsStatic IsStatic377,378
+data IsStatic = Static Static377,378
+data IsStatic = Static | Defin Defin377,378
+data IsStatic = Static | Defin | TypeConstrTypeConstr377,378
+keywords keywords380,381
+encapsulate encapsulate382,383
+dropAll dropAll388,389
+data Position Position395,396
+data Position = Nested Nested395,396
+data Position = Nested | TopTop395,396
+termOfPattern termOfPattern397,398
+multiApp multiApp404,405
+type DkDocs DkDocs408,409
+toDkDocs toDkDocs410,411
 
 ./Compiler.hs,2103
 module Agda2Dk.Compiler Agda2Dk.Compiler2,3
@@ -117,50 +116,50 @@ dkCommandLineFlags dkCommandLineFlags112,113
 type DkModuleEnv DkModuleEnv128,129
 dkPreModule dkPreModule130,131
 dkPostModule dkPostModule141,142
-filePath filePath152,153
-orderDeclRules orderDeclRules162,163
-orderDeclRules' orderDeclRules'171,172
-dkCompileDef dkCompileDef188,189
-translateType translateType235,236
-extractStaticity extractStaticity238,239
-extractRules extractRules252,253
-decodedVersion decodedVersion280,281
-clause2rule clause2rule314,315
-extractContext extractContext377,378
-extractContextAux extractContextAux380,381
-extractPatterns extractPatterns386,387
-auxPatt auxPatt391,392
-extractPattern extractPattern402,403
-substi substi492,493
-substiLvl substiLvl511,512
-substiPreLvl substiPreLvl513,514
-substiSort substiSort516,517
-translateElim translateElim523,524
-translateTerm' translateTerm'533,534
-translateTerm translateTerm597,598
-extractSort extractSort599,600
-lvlOf lvlOf617,618
-getKind getKind621,622
-lvlFromLevel lvlFromLevel624,625
-preLvlFromPlusLevel preLvlFromPlusLevel627,628
-translateLiteral translateLiteral637,638
-addEl addEl646,647
-qName2DkName qName2DkName657,658
-name2DkIdent name2DkIdent683,684
-namePart2String namePart2String692,693
-modName2DkModIdent modName2DkModIdent696,697
-separateVars separateVars699,700
-separateAux separateAux702,703
-usedVars usedVars708,709
-computeUnused computeUnused711,712
-freshStr freshStr717,718
-createEtaExpandSymbol createEtaExpandSymbol723,724
-etaExpandType etaExpandType754,755
-etaIsId etaIsId765,766
-etaExpansionDecl etaExpansionDecl808,809
-etaExpandAction etaExpandAction908,909
-etaContractFun etaContractFun911,912
-etaExpansion etaExpansion916,917
+filePath filePath157,158
+orderDeclRules orderDeclRules167,168
+orderDeclRules' orderDeclRules'177,178
+dkCompileDef dkCompileDef197,198
+translateType translateType244,245
+extractStaticity extractStaticity247,248
+extractRules extractRules261,262
+decodedVersion decodedVersion289,290
+clause2rule clause2rule323,324
+extractContext extractContext386,387
+extractContextAux extractContextAux389,390
+extractPatterns extractPatterns395,396
+auxPatt auxPatt400,401
+extractPattern extractPattern411,412
+substi substi501,502
+substiLvl substiLvl520,521
+substiPreLvl substiPreLvl522,523
+substiSort substiSort525,526
+translateElim translateElim532,533
+translateTerm' translateTerm'542,543
+translateTerm translateTerm606,607
+extractSort extractSort608,609
+lvlOf lvlOf626,627
+getKind getKind630,631
+lvlFromLevel lvlFromLevel633,634
+preLvlFromPlusLevel preLvlFromPlusLevel636,637
+translateLiteral translateLiteral646,647
+addEl addEl655,656
+qName2DkName qName2DkName666,667
+name2DkIdent name2DkIdent692,693
+namePart2String namePart2String701,702
+modName2DkModIdent modName2DkModIdent705,706
+separateVars separateVars708,709
+separateAux separateAux711,712
+usedVars usedVars717,718
+computeUnused computeUnused720,721
+freshStr freshStr726,727
+createEtaExpandSymbol createEtaExpandSymbol732,733
+etaExpandType etaExpandType763,764
+etaIsId etaIsId774,775
+etaExpansionDecl etaExpansionDecl817,818
+etaExpandAction etaExpandAction917,918
+etaContractFun etaContractFun920,921
+etaExpansion etaExpansion925,926
 
 ./Compiler (copy).hs,2101
 module Agda2Dk.Compiler Agda2Dk.Compiler2,3

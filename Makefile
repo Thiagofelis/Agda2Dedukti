@@ -19,7 +19,7 @@ test: compile $(DKS)
 	cd $(TEST_DIR) && make
 
 clean-tests:
-	rm $(TEST_DIR)/*.dk* $(TEST_DIR)/.depend
+	rm $(TEST_DIR)/*.lp* $(TEST_DIR)/.depend
 
 NB ?= -1
 TIMEOUT ?=0

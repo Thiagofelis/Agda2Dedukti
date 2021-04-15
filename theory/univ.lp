@@ -1,8 +1,8 @@
 // The usual encoding of Natural Number (Peano like)
-constant symbol Nat : TYPE;
+symbol Nat : TYPE;
 
-constant symbol 0_N : Nat;
-constant symbol s_N : Nat → Nat;
+symbol 0_N : Nat;
+symbol s_N : Nat → Nat;
 symbol 1_N ≔ s_N 0_N;
 
 symbol max_N : Nat → Nat → Nat;
@@ -43,6 +43,7 @@ symbol Plus : Nat → Lvl → LvlSet;
 associative commutative symbol Union : LvlSet → LvlSet → LvlSet;
 
 rule Union $x           Empty        ↪ $x;
+rule Union Empty $x                  ↪ $x; //added by me
 rule Union (Plus $i $l) (Plus $j $l) ↪ Plus (max_N $i $j) $l;
 
 symbol mapPlus : Nat → LvlSet → LvlSet;
@@ -52,9 +53,13 @@ with   mapPlus $i (Union $l1 $l2) ↪ Union (mapPlus $i $l1) (mapPlus $i $l2);
 
 rule Max $i   (Plus $j (Max $k $l))             ↪ Max (max_N $i (plus_N $j $k)) (mapPlus $j $l)
 with Max $i   (Union (Plus $j (Max $k $l)) $tl) ↪ Max (max_N $i (plus_N $j $k)) (Union (mapPlus $j $l) $tl)
+with Max $i   (Union $tl (Plus $j (Max $k $l))) ↪ Max (max_N $i (plus_N $j $k)) (Union (mapPlus $j $l) $tl) //added by me
 with Max 0_N  (Plus 0_N $x)                     ↪ $x;
+
+
 
 // The reflection of the syntax on Lvl.
 rule zero      ↪ Max 0_N Empty;
 rule s $x      ↪ Max 1_N (Plus 1_N $x);
 rule max $x $y ↪ Max 0_N (Union (Plus 0_N $x) (Plus 0_N $y));
+

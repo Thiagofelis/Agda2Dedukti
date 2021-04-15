@@ -8,6 +8,7 @@ import Data.List.Unique
 import Data.Int
 import Data.Char
 
+
 -- hides (<>), as there was a conflit with the (<>) defined here
 import Prelude hiding ((<>))
 
@@ -69,9 +70,9 @@ decodedType :: DkModName -> DkTerm -> Doc
 decodedType mods (DkSort _)              = text "TYPE"
 decodedType mods (DkProd s1 _ id t u)    =
   let domDecl = printSort Nested mods s1 <+> printTerm Nested mods t in
-  parens (printIdent id <+> text ": Agda.Term" <+> domDecl) <+> text "→" <+> decodedType mods u
+  text "Π" <+> parens (printIdent id <+> text ": Agda.Term" <+> domDecl) <+> text "," <+> decodedType mods u
 decodedType mods (DkQuantifLevel _ id t) =
-  parens (printIdent id <+> text ": univ.Lvl") <+> text "→" <+> decodedType mods t
+  text "Π" <+> parens (printIdent id <+> text ": univ.Lvl") <+> text "," <+> decodedType mods t
 
 printRules :: DkModName -> DkDefinition -> (DkRule -> Bool) -> [Doc]
 printRules mods (DkDefinition {rules=l}) f = map (prettyDk mods) (filter f l)
@@ -80,23 +81,33 @@ type Lvl = [PreLvl]
 
 printLvl :: DkModName -> Lvl -> Doc
 printLvl mods l =
-  printPreLvlList mods l
+  printPreLvlList mods [] l
 
-printPreLvlList mods []     = text "univ.zero"
-printPreLvlList mods (a:[]) = prettyDk mods a
-printPreLvlList mods (a:tl) =
-  parens $ text "univ.max" <+> prettyDk mods a <+> printPreLvlList mods tl
+printPreLvlList :: DkModName -> [DkIdent] -> Lvl -> Doc
+printPreLvlList mods ruleVars []     = text "univ.zero"
+printPreLvlList mods ruleVars (a:[]) = prettyDk_preLvl mods ruleVars a
+printPreLvlList mods ruleVars (a:tl) =
+  parens $ text "univ.max" <+> prettyDk_preLvl mods ruleVars a <+> printPreLvlList mods ruleVars tl
 
 data PreLvl =
     LvlInt Int
   | LvlPlus Int DkTerm
 
-instance PrettyDk PreLvl where
- prettyDk mods (LvlInt i)    =
-   unary i
- prettyDk mods (LvlPlus i t) =
-   applyN i (parens . (text "univ.s" <+>)) (printTerm Nested mods t)
+prettyDk_preLvl :: DkModName -> [DkIdent] -> PreLvl -> Doc
+prettyDk_preLvl mods ruleVars (LvlInt i)    =
+  unary i
+prettyDk_preLvl mods ruleVars (LvlPlus i t) =
+  applyN i (parens . (text "univ.s" <+>)) (printTerm' Nested mods ruleVars t)
   where applyN i f x = iterate f x !! i
+
+
+-- TODO adapt All prettyDk to deal with rule binders $
+--instance PrettyDk PreLvl where
+-- prettyDk mods (LvlInt i)    =
+--   unary i
+-- prettyDk mods (LvlPlus i t) =
+--   applyN i (parens . (text "univ.s" <+>)) (printTerm Nested mods t <> text "-oi")
+--  where applyN i f x = iterate f x !! i
 
 unary :: Int -> Doc
 unary x
@@ -224,7 +235,7 @@ printTerm' pos mods ruleVars (DkLam n (Just (a,s)) t) =
 printTerm' pos mods ruleVars (DkDB n _)               =
   printIdent' ruleVars n
 printTerm' pos mods ruleVars (DkLevel l)              =
-  printPreLvlList mods l
+  printPreLvlList mods ruleVars l
 printTerm' pos mods ruleVars (DkBuiltin b)            =
   printBuiltin pos mods b
 
@@ -233,7 +244,7 @@ data DkBuiltin =
   | DkChar   Char
   | DkString String
 
-printBuiltin :: Position -> DkModName -> DkBuiltin -> Doc
+printBuiltin :: Position -> DkModName ->  DkBuiltin -> Doc
 printBuiltin pos mods (DkNat i) =
   printTerm pos mods (fromBuiltinNat i)
 printBuiltin pos mods (DkChar c) =
@@ -356,9 +367,11 @@ printIdent n = printIdent' [] n
 -- this version takes as l a list of vars which are printed
 -- with a '$' before it
 printIdent' :: [DkIdent] -> DkIdent -> Doc
-printIdent' l n = if elem n l
-                  then text $ "$" ++ (encapsulate n)
-                  else text $ encapsulate n
+--                lambdapi doesnt like points in bound variable names
+printIdent' l n = let n' = map (\c -> if c == '.' then '\'' else c) n in
+                    if elem n l
+                    then text $ "$" ++ (encapsulate n')
+                    else text $ (encapsulate n')
 
 
 
@@ -406,3 +419,6 @@ toDkDocs mods d =
       ( empty
       , printDecl mods d
       , hcat $ printRules mods d (\x -> True))
+
+
+
