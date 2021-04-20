@@ -14,6 +14,10 @@ import Data.List (sortOn, stripPrefix, intercalate, (++))
 import Text.PrettyPrint
 import Debug.Trace
 
+-- needed for detecting the requires on the output
+import Text.Regex.TDFA ((=~), getAllTextMatches)
+import Data.List.Unique (sortUniq)
+
 import Agda.Compiler.Backend
 import Agda.Compiler.Common
 import Agda.Interaction.Options
@@ -151,9 +155,22 @@ dkPostModule opts _ _ mods defs =
     output <- orderDeclRules (catMaybes defs) concMods
     liftIO $
       do
---        putStrLn $ case menv of (s,n) -> concat $  modName2DkModIdent s
-        ss <- return $ show output
+        ss <- return $ addRequires $ show output
         writeFile (filePath opts mods) ss
+
+addRequires :: String -> String
+addRequires s =
+  let moduleRegex = "[ (↪,][a-zA-Z0-9_']*\\." in
+  let removeFirstAndLastChars s = reverse $ tail $ reverse $ tail s in
+  let allmods = map removeFirstAndLastChars $
+                getAllTextMatches (s =~moduleRegex) :: [String] in
+  let filteredmods = filter (\s -> not $ or [s == "Agda", s == "univ"]) allmods in
+  let uniquemods = sortUniq filteredmods in
+  let reqList = (["require theory.univ as univ;","require theory.Agda as Agda;"] ++) $
+                map (\s -> "require tests." ++ s ++ " as " ++ s ++ ";") uniquemods in
+  let requires = intercalate "\n" reqList in
+  requires ++ "\n" ++  s
+
 
 filePath :: DkOptions -> ModuleName -> String
 filePath opts mods =

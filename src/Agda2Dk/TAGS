@@ -100,66 +100,68 @@ multiApp multiApp404,405
 type DkDocs DkDocs408,409
 toDkDocs toDkDocs410,411
 
-./Compiler.hs,2103
+./Compiler.hs,2159
 module Agda2Dk.Compiler Agda2Dk.Compiler2,3
-dkBackend dkBackend49,50
-dkBackend' dkBackend'52,53
-type DkCompiled DkCompiled87,88
-data DkOptions DkOptions89,90
-data DkOptions = DkOptionsDkOptions89,90
-  { optDkCompile optDkCompile90,91
-  , optDkFlags optDkFlags91,92
-  , optDkDir optDkDir92,93
-  , optDkRegen optDkRegen93,94
-defaultDkOptions defaultDkOptions96,97
-dkCommandLineFlags dkCommandLineFlags112,113
-type DkModuleEnv DkModuleEnv128,129
-dkPreModule dkPreModule130,131
-dkPostModule dkPostModule141,142
-filePath filePath157,158
-orderDeclRules orderDeclRules167,168
-orderDeclRules' orderDeclRules'177,178
-dkCompileDef dkCompileDef197,198
-translateType translateType244,245
-extractStaticity extractStaticity247,248
-extractRules extractRules261,262
-decodedVersion decodedVersion289,290
-clause2rule clause2rule323,324
-extractContext extractContext386,387
-extractContextAux extractContextAux389,390
-extractPatterns extractPatterns395,396
-auxPatt auxPatt400,401
-extractPattern extractPattern411,412
-substi substi501,502
-substiLvl substiLvl520,521
-substiPreLvl substiPreLvl522,523
-substiSort substiSort525,526
-translateElim translateElim532,533
-translateTerm' translateTerm'542,543
-translateTerm translateTerm606,607
-extractSort extractSort608,609
-lvlOf lvlOf626,627
-getKind getKind630,631
-lvlFromLevel lvlFromLevel633,634
-preLvlFromPlusLevel preLvlFromPlusLevel636,637
-translateLiteral translateLiteral646,647
-addEl addEl655,656
-qName2DkName qName2DkName666,667
-name2DkIdent name2DkIdent692,693
-namePart2String namePart2String701,702
-modName2DkModIdent modName2DkModIdent705,706
-separateVars separateVars708,709
-separateAux separateAux711,712
-usedVars usedVars717,718
-computeUnused computeUnused720,721
-freshStr freshStr726,727
-createEtaExpandSymbol createEtaExpandSymbol732,733
-etaExpandType etaExpandType763,764
-etaIsId etaIsId774,775
-etaExpansionDecl etaExpansionDecl817,818
-etaExpandAction etaExpandAction917,918
-etaContractFun etaContractFun920,921
-etaExpansion etaExpansion925,926
+import import17,18
+dkBackend dkBackend53,54
+dkBackend' dkBackend'56,57
+type DkCompiled DkCompiled91,92
+data DkOptions DkOptions93,94
+data DkOptions = DkOptionsDkOptions93,94
+  { optDkCompile optDkCompile94,95
+  , optDkFlags optDkFlags95,96
+  , optDkDir optDkDir96,97
+  , optDkRegen optDkRegen97,98
+defaultDkOptions defaultDkOptions100,101
+dkCommandLineFlags dkCommandLineFlags116,117
+type DkModuleEnv DkModuleEnv132,133
+dkPreModule dkPreModule134,135
+dkPostModule dkPostModule145,146
+addRequires addRequires160,161
+filePath filePath174,175
+orderDeclRules orderDeclRules184,185
+orderDeclRules' orderDeclRules'194,195
+dkCompileDef dkCompileDef214,215
+translateType translateType261,262
+extractStaticity extractStaticity264,265
+extractRules extractRules278,279
+decodedVersion decodedVersion306,307
+clause2rule clause2rule340,341
+extractContext extractContext403,404
+extractContextAux extractContextAux406,407
+extractPatterns extractPatterns412,413
+auxPatt auxPatt417,418
+extractPattern extractPattern428,429
+substi substi518,519
+substiLvl substiLvl537,538
+substiPreLvl substiPreLvl539,540
+substiSort substiSort542,543
+translateElim translateElim549,550
+translateTerm' translateTerm'559,560
+translateTerm translateTerm623,624
+extractSort extractSort625,626
+lvlOf lvlOf643,644
+getKind getKind647,648
+lvlFromLevel lvlFromLevel650,651
+preLvlFromPlusLevel preLvlFromPlusLevel653,654
+translateLiteral translateLiteral663,664
+addEl addEl672,673
+qName2DkName qName2DkName683,684
+name2DkIdent name2DkIdent709,710
+namePart2String namePart2String718,719
+modName2DkModIdent modName2DkModIdent722,723
+separateVars separateVars725,726
+separateAux separateAux728,729
+usedVars usedVars734,735
+computeUnused computeUnused737,738
+freshStr freshStr743,744
+createEtaExpandSymbol createEtaExpandSymbol749,750
+etaExpandType etaExpandType780,781
+etaIsId etaIsId791,792
+etaExpansionDecl etaExpansionDecl834,835
+etaExpandAction etaExpandAction934,935
+etaContractFun etaContractFun937,938
+etaExpansion etaExpansion942,943
 
 ./Compiler (copy).hs,2101
 module Agda2Dk.Compiler Agda2Dk.Compiler2,3

@@ -4,7 +4,7 @@ import Data.Word
 import Data.List (sort)
 import Data.List.Extra (nubOrd)
 -- This next line needs the package Unique, install it from Cabal
-import Data.List.Unique
+import Data.List.Unique (sortUniq)
 import Data.Int
 import Data.Char
 
