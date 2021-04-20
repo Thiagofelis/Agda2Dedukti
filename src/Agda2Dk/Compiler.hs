@@ -158,6 +158,12 @@ dkPostModule opts _ _ mods defs =
         ss <- return $ addRequires $ show output
         writeFile (filePath opts mods) ss
 
+-- this functions goes through the text that is going to be printed in the .lp file
+-- and seee which modules it uses and add a require for them. using regular
+-- expressions, it matches names of the form '(NAME.', ' NAME.', '↪Name' and ',Name.'
+-- which are then included with a require on the begining of the file. this might
+-- not be the cleanest way of adding the requires, but it seems to work well
+-- at least right now
 addRequires :: String -> String
 addRequires s =
   let moduleRegex = "[ (↪,][a-zA-Z0-9_']*\\." in
