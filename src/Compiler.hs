@@ -717,7 +717,7 @@ extractPattern env@(_,eta) etaMode p applyingType = do
       return $ (DkFun dkNam params, finalTy)
 
     otherwise                           ->
-      error "Unexpected pattern of HoTT"
+      error $ "Unexpected pattern of HoTT: " ++ show patt
   where
 
     caseParamFun :: Type -> Elims -> TCM (Type,[DkPattern])

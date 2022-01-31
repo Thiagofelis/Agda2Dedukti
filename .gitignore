@@ -1,4 +1,6 @@
 .stack-work/
+agda-stdlib/
+std-out/
 TAGS
 *~
 *.hi

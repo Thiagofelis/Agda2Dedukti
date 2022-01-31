@@ -1,20 +1,17 @@
 #!/bin/bash
 
-AGDA_DIR=$1
-EXEC="$2"
-flags="$3 --outDir=$4"
-declare -i NB=$5
-
+mkdir std-out
 i=0
-cd $AGDA_DIR
+cd agda-stdlib/src
 find . -name "*.agda" | sort |
-    while read fil;
+    while read file;
     do
         if (("$NB" == "$i"))
         then
             break
         fi;
         echo $i;
+	echo $file;
         i=$(($i+1));
-        $EXEC $flags "$fil";
+        stack exec -- Agda2Dedukti-exe --dk "$file" --outDir=../../std-out;
     done
