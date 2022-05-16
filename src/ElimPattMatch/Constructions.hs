@@ -52,6 +52,7 @@ mkCaseMethod conName =
 -- given type D with numPars parameters
 -- builds the type D p -> Set_i in the context i : Level, p : Pars
 mkMotiveType :: QName -> Int -> TCM Type
+-- mkMotiveType :: forall m. (MonadTCM m) => QName -> Int -> m Type
 mkMotiveType dataname numPars =
   do
     let dataAppliedToPars = Def dataname $ genElim numPars
@@ -61,7 +62,7 @@ mkMotiveType dataname numPars =
     let returnTy' = El{_getSort = sortReturnTy, unEl = returnTy}
     let ty =
           Pi (defaultDom $ El{_getSort = sortDataAppliedToPars, unEl = dataAppliedToPars})
-          (NoAbs{absName = "", unAbs = returnTy'})
+          (NoAbs{absName = "x", unAbs = returnTy'})
     sortTy <- sortOf ty
     return El{_getSort = sortTy, unEl = ty}
 
@@ -83,11 +84,18 @@ mkEnd dataname numPars =
 
     sortTy <- sortOf ty
     return El{_getSort = sortTy, unEl = ty}
-  
+
+-- runState (mkCase ...) initState :: MonadTCM m => m (Type,ToDKState)
+
 -- given dataype name D, generates the type of case_D
+-- mkCase :: forall m. (MonadTCM m, MonadState ToDKState m) => QName -> m Type
 mkCase :: QName -> TCM Type
 mkCase qname =
   do
+{-    st <- gets fieldName
+    put st
+    modify -}
+    
     Datatype{dataPars = numPars, dataCons = cons} <- theDef <$> getConstInfo qname
     dType <- defType <$> getConstInfo qname
     pars' <- theTel <$> telView dType
@@ -112,6 +120,12 @@ mkCase qname =
     end <- addContext tel' $ mkEnd qname numPars
 
     return $ telePi_ tel'' $ raise (length cons) end
+
+  
+telNames :: Telescope -> [String]
+telNames EmptyTel = []
+telNames (ExtendTel _ Abs{absName = name, unAbs = nextTel}) = name : (telNames nextTel)
+
 
 -- Given Gamma, x : D pars, Delta |- returnTy,
 -- a constructor c of D, of type {p : pars} -> (a : Phi) -> D pars
@@ -159,11 +173,7 @@ buildMethod gamma d pars delta returnTy consName compiledC =
     ---- compiledClausesToCase to get a t such that newTel |- t : returnTy''
     t <- compiledClausesToCase newTel returnTy'' compiledC
 
-    let namesToBeAbstracted =
-          let auxAbs :: Telescope -> [String]
-              auxAbs EmptyTel = []
-              auxAbs (ExtendTel _ Abs{absName = name, unAbs = nextTel}) = name : (auxAbs nextTel) in
-            auxAbs $ consTel' `abstract` delta''
+    let namesToBeAbstracted = telNames $ consTel' `abstract` delta''
 
     -- computes Gamma |- abs_t : (a : Phi) -> Delta' -> returnTy''
     let abstracted_t = foldr (\x recCall -> Lam defaultArgInfo Abs{absName = x, unAbs = recCall})
@@ -174,10 +184,50 @@ buildMethod gamma d pars delta returnTy consName compiledC =
     
     return raised_t
 
---    reportSDoc "toDk.elimPattMatch" 20 $ AP.prettyTCM $ finalTy    
+buildMethodCatchAll :: Telescope -> Telescope -> QName -> Elims -> Telescope -> Type -> QName -> CompiledClauses -> TCM Term
+buildMethodCatchAll fullTel gamma d pars delta returnTy consName compiledC =
+  do
+    -- gives t with Gamma, x : D p, Delta |- t : A
+    t <- compiledClausesToCase fullTel returnTy compiledC
+
+    cons <- getConstInfo consName
+    let consTy = defType cons
+    TelV{theTel = preConsTel} <- telView $ consTy
+    let consTel = removeParams preConsTel
+    let numConsArgs = length consTel
+
+    -- appliedCons = c a
+    let appliedCons =
+          let conHead = ConHead{conName = consName,
+                                conDataRecord = IsData,
+                                conInductive = Inductive,
+                                conFields = []} in
+            let conInfo = ConOCon in
+              Con conHead conInfo $ genElim numConsArgs
+
+    -- Gamma, a : Phi |- subst : Gamma
+    let subst = Wk numConsArgs IdS
+    -- Gamma, a : Phi |- subst' : Gamma, x : D pars
+    let subst' = appliedCons :# subst
+    -- Gamma, a : Phi, Delta{c a/x} |- subst'' : Gamma, x : D pars, Delta
+    let subst'' = Lift (length delta) subst'
+
+    -- gives t' with Gamma, a : Phi, Delta{c a/x} |- t' : A{c a/x}
+    let t' = applySubst subst'' t
+
+    let namesToBeAbstracted = (replicate numConsArgs "x") ++ (telNames delta)
+
+    -- computes Gamma |- abs_t : (a : Phi) -> Delta' -> A
+    let abstracted_t = foldr (\x recCall -> Lam defaultArgInfo Abs{absName = x, unAbs = recCall})
+                       t' namesToBeAbstracted
+
+    -- weakens Gamma |- abs_t  to Gamma, x : D pars, Delta |- abs_t
+    let raised_t = raise (1 + (length delta)) abstracted_t
     
+    return raised_t
     
 
+          
 compiledClausesToCase :: Telescope -> Type -> CompiledClauses -> TCM Term
 compiledClausesToCase tel returnTy (Done _ body) = return body -- trivial node
 compiledClausesToCase tel returnTy tree@(Case n bs) =
@@ -201,7 +251,7 @@ compiledClausesToCase tel returnTy tree@(Case n bs) =
     -- motiveTy = \x. Delta -> returnTy
     let motiveTy =
           Apply Arg{argInfo = defaultArgInfo,
-                    unArg = raise (length delta) $ 
+                    unArg = raise (1 + (length delta)) $ 
                      Lam defaultArgInfo Abs{absName = splitName, unAbs = unEl $ telePi delta returnTy}}
     -- elim '' = returnLvl pars (\x. Delta -> returnTy)
     let elim'' = elim' ++ [motiveTy]
@@ -209,21 +259,15 @@ compiledClausesToCase tel returnTy tree@(Case n bs) =
     -- gets list of constructors of D
     constructors <- dataCons <$> theDef <$> getConstInfo d
 
---    mapM (\x -> reportSDoc "toDk.elimPattMatch" 20 $ AP.prettyTCM $ x) constructors
-
-    let test = map (\(x, y) -> x) $ Map.assocs (conBranches bs)
-
-    reportSDoc "toDk.elimPattMatch" 20 $ return $ pretty tree
-    
-    reportSDoc "toDk.elimPattMatch" 20 $ AP.prettyTCM test
-
-    -- maps constructors to CompiledClauses
-    let getCompiledC cons = content $ (conBranches bs) Map.! cons
-
-    
     -- calculates the methods
     methods <- mapM
-               (\consName -> buildMethod gamma d pars delta returnTy consName (getCompiledC consName))
+               (\consName ->
+                  case (Map.lookup consName (conBranches bs), catchAllBranch bs) of
+                    (Just compiledC, _)      -> -- constructor consName has a branch on the case tree bs
+                      buildMethod gamma d pars delta returnTy consName (content compiledC)
+                    (Nothing, Just catchAll) -> -- no branch, there must be a catchall clause
+                      buildMethodCatchAll tel gamma d pars delta returnTy consName catchAll
+                    _                        -> __IMPOSSIBLE__)
                constructors
 
     -- elim''' = returnLvl pars (\x. Delta -> returnTy) m1 .. mk
@@ -232,7 +276,7 @@ compiledClausesToCase tel returnTy tree@(Case n bs) =
     -- finalElim = returnLvl pars (\x. Delta -> returnTy) m1 .. mk x delta
     let finalElim = elim''' ++ (map (\x -> Apply $ defaultArg $ Var x []) $ genList $ 1 + (size delta))
         
-    reportSDoc "toDk.elimPattMatch" 20 $ AP.prettyTCM $ Def d finalElim
+--    reportSDoc "toDk.elimPattMatch" 20 $ AP.prettyTCM $ Def d finalElim
 
     return $ Def d finalElim
 

@@ -333,14 +333,27 @@ extractRules env etaMode n (funDef@Function {}) ty =
   do
     -- TEST --
     let Just compiledClauses = funCompiled funDef
+    reportSDoc "toDk.elimPattMatch" 20 $ return $ pretty compiledClauses    
     TelV{ theTel = tel, theCore = returnTy} <- telView ty
     t <- compiledClausesToCase tel returnTy compiledClauses
     let t' = teleLam tel t
     reportSDoc "toDk.elimPattMatch" 20 $ AP.prettyTCM t'
     reportSDoc "toDk.elimPattMatch" 20 $ AP.prettyTCM ty
-    checkInternal t' CmpLeq ty
+--    checkInternal t' CmpLeq ty
     -- END --
-    
+
+    rhsDk <- translateTerm env etaMode t'
+    Right dkName <- qName2DkName env etaMode n
+
+    return $ [DkRule
+      { decoding  = False
+      , context   = []
+      , headsymb  = dkName
+      , patts     = []
+      , rhs       = rhsDk
+      }]
+
+{-    
     -- if this is an alias function, it does not go through the covering checker,
     -- the only way to know if this is the case is to check if funCovering is empty
     -- and funClauses is not
@@ -377,6 +390,7 @@ extractRules env etaMode n (funDef@Function {}) ty =
 
     l  <- mapM (clause2rule env etaMode n) clauses
     return $ catMaybes l
+-}
 
 extractRules env etaMode n (Datatype {dataCons=cons, dataClause=dataClauses, dataPars=i, dataIxs=j}) ty=
   do
