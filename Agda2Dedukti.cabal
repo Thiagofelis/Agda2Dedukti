@@ -24,6 +24,7 @@ library
   exposed-modules:
       Compiler
       DkSyntax
+      ElimPattMatch.Constructions
   other-modules:
       Paths_Agda2Dedukti
   hs-source-dirs:
@@ -32,6 +33,7 @@ library
       Agda
     , Unique
     , base >=4.7 && <5
+    , containers
     , deepseq
     , directory
     , extra
@@ -53,6 +55,7 @@ executable Agda2Dedukti-exe
     , Agda2Dedukti
     , Unique
     , base >=4.7 && <5
+    , containers
     , deepseq
     , directory
     , extra

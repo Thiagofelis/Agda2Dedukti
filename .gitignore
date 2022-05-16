@@ -1,6 +1,9 @@
 .stack-work/
 agda-stdlib/
 std-out/
+out-stdlib/
+tests/files/*.dk
+tests/elimPattTests/*.dk
 TAGS
 *~
 *.hi

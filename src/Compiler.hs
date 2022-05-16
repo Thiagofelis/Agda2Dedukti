@@ -52,6 +52,7 @@ import Agda.Utils.Pretty (pretty)
 import Agda.Utils.Impossible
 
 import DkSyntax
+import ElimPattMatch.Constructions
 
 ------------------------------------------------------------------------------
 -- Backend callbacks
@@ -242,6 +243,10 @@ dkCompileDef dkOpts env@(mod,eta) _ def@(Defn {defCopy=isCopy, defName=n, theDef
     reportSDoc "toDk" 8 $ (\x -> text "  No compilation of"<+>x<+>text "which is a copy") <$> AP.prettyTCM n
     return Nothing
   else do
+    case d of
+      Function{funCompiled = t } -> reportSDoc "toDk" 10 $ return $ pretty t
+      _ -> return ()
+      
     reportSDoc "toDk" 3 $ (text "  Compiling definition of" <+>) <$> AP.prettyTCM n
     reportSDoc "toDk" 10 $ return $ text "    of type" <+> pretty t
     reportSDoc "toDk" 60 $ return $ text "    " <> pretty def
@@ -326,6 +331,16 @@ extractStaticity _ (AbstractDefn {})    = return Static
 extractRules :: DkModuleEnv -> EtaMode -> QName -> Defn -> Type -> TCM [DkRule]
 extractRules env etaMode n (funDef@Function {}) ty =
   do
+    -- TEST --
+    let Just compiledClauses = funCompiled funDef
+    TelV{ theTel = tel, theCore = returnTy} <- telView ty
+    t <- compiledClausesToCase tel returnTy compiledClauses
+    let t' = teleLam tel t
+    reportSDoc "toDk.elimPattMatch" 20 $ AP.prettyTCM t'
+    reportSDoc "toDk.elimPattMatch" 20 $ AP.prettyTCM ty
+    checkInternal t' CmpLeq ty
+    -- END --
+    
     -- if this is an alias function, it does not go through the covering checker,
     -- the only way to know if this is the case is to check if funCovering is empty
     -- and funClauses is not
@@ -365,6 +380,19 @@ extractRules env etaMode n (funDef@Function {}) ty =
 
 extractRules env etaMode n (Datatype {dataCons=cons, dataClause=dataClauses, dataPars=i, dataIxs=j}) ty=
   do
+    -- TEST mkCaseMethod
+    caseType <- mkCase n
+    sort <- checkType' caseType
+    reportSDoc "toDk.elimPattMatch" 20 $ AP.prettyTCM sort
+    caseName <- freshName_ $ "case-D"
+    modName <- freshName_ $ "testmod"         
+    let caseQname = QName{qnameModule = MName{mnameToList = [modName]}, qnameName = caseName}
+    addConstant caseQname $
+      defaultDefn defaultArgInfo caseQname caseType WithoutK Axiom{axiomConstTransp=False}
+    reportSDoc "toDk.elimPattMatch" 20 $ AP.prettyTCM caseType
+    -- END OF TEST
+
+
     l <- case dataClauses of
            Just c  -> sequence [clause2rule env etaMode n c, Just <$> decodedVersion env etaMode n (i+j)]
            Nothing -> sequence [Just <$> decodedVersion env etaMode n (i+j)]
