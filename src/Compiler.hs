@@ -1,6 +1,6 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE DeriveGeneric #-}
-
+{-# LANGUAGE FlexibleContexts #-}
 
 module Compiler where
 
@@ -144,6 +144,17 @@ dkCommandLineFlags =
 
 type EtaMode = Bool
 
+data DkState = DkState
+  {
+    dkUnit :: ()
+,   caseQNames :: QName -> Maybe QName
+  }
+             
+type DkM a = StateT DkState TCM a
+
+-- testFun :: (MonadTCM m, MonadState DkState m) => () -> m ()
+-- testFun () = do return ()
+
 ------------------------------------------------------------------------------
 --- Module compilation ---
 ------------------------------------------------------------------------------
@@ -166,7 +177,11 @@ dkPostModule opts _ _ mods defs =
     let dkMode = case (optDkModeLp opts) of False -> DkMode
                                             True  -> LpMode
 
-    translatedDefs' <- mapM (\def -> translateDef opts def) defs
+    translatedDefs' <-
+      evalStateT
+      (mapM (\def -> translateDef opts def) defs)
+      DkState{dkUnit=(),
+              caseQNames = (\_ -> Nothing) }
     let translatedDefs =
           map (\(mutualId, def) -> (mutualId, toDkDocs (modName2DkModIdent mods) dkMode def))
           (catMaybes translatedDefs')
@@ -237,18 +252,19 @@ orderDeclRules' mut accTy accOther accRules l@((m,(a,b,c)):tl)
 -- The main function --
 ------------------------------------------------------------------------------
 
-translateDef :: DkOptions -> Definition -> TCM (Maybe (Int32, DkDefinition))
+translateDef :: (MonadTCM m, MonadState DkState m) =>
+                DkOptions -> Definition -> m (Maybe (Int32, DkDefinition))
 translateDef dkOpts def@(Defn {defCopy=isCopy, defName=n, theDef=d, defType=t, defMutual=MutId m}) =
   if isCopy
   then do
-    reportSDoc "toDk" 8 $ (\x -> text "  No compilation of"<+>x<+>text "which is a copy") <$> AP.prettyTCM n
+    liftTCM $ reportSDoc "toDk" 8 $ (\x -> text "  No compilation of"<+>x<+>text "which is a copy") <$> AP.prettyTCM n
     return Nothing
   else do
-    reportSDoc "toDk" 3 $ (text "  Compiling definition of" <+>) <$> AP.prettyTCM n
-    reportSDoc "toDk" 10 $ return $ text "    of type" <+> pretty t
-    reportSDoc "toDk" 60 $ return $ text "    " <> pretty def
+    liftTCM $ reportSDoc "toDk" 3 $ (text "  Compiling definition of" <+>) <$> AP.prettyTCM n
+    liftTCM $ reportSDoc "toDk" 10 $ return $ text "    of type" <+> pretty t
+    liftTCM $ reportSDoc "toDk" 60 $ return $ text "    " <> pretty def
 
-    inTopContext $ do
+    liftTCM $ inTopContext $ do
       reportSDoc "toDk" 15 $ return $ text "Getting type"
       t' <- reconstructParametersInType' defaultAction t -- t with parameters reconstructed
       typ        <- translateType t'
