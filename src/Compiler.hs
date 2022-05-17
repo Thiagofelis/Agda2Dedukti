@@ -331,7 +331,10 @@ extractStaticity _ (AbstractDefn {})    = return Static
 extractRules :: DkModuleEnv -> EtaMode -> QName -> Defn -> Type -> TCM [DkRule]
 extractRules env etaMode n (funDef@Function {}) ty =
   do
-    -- TEST --
+
+{-    
+    
+    -- TO TEST ELIM PATT MATCH --
     let Just compiledClauses = funCompiled funDef
     reportSDoc "toDk.elimPattMatch" 20 $ return $ pretty compiledClauses    
     TelV{ theTel = tel, theCore = returnTy} <- telView ty
@@ -352,8 +355,8 @@ extractRules env etaMode n (funDef@Function {}) ty =
       , patts     = []
       , rhs       = rhsDk
       }]
+-}
 
-{-    
     -- if this is an alias function, it does not go through the covering checker,
     -- the only way to know if this is the case is to check if funCovering is empty
     -- and funClauses is not
@@ -390,10 +393,11 @@ extractRules env etaMode n (funDef@Function {}) ty =
 
     l  <- mapM (clause2rule env etaMode n) clauses
     return $ catMaybes l
--}
+
 
 extractRules env etaMode n (Datatype {dataCons=cons, dataClause=dataClauses, dataPars=i, dataIxs=j}) ty=
   do
+    {-
     -- TEST mkCaseMethod
     caseType <- mkCase n
     sort <- checkType' caseType
@@ -405,7 +409,7 @@ extractRules env etaMode n (Datatype {dataCons=cons, dataClause=dataClauses, dat
       defaultDefn defaultArgInfo caseQname caseType WithoutK Axiom{axiomConstTransp=False}
     reportSDoc "toDk.elimPattMatch" 20 $ AP.prettyTCM caseType
     -- END OF TEST
-
+-}
 
     l <- case dataClauses of
            Just c  -> sequence [clause2rule env etaMode n c, Just <$> decodedVersion env etaMode n (i+j)]
