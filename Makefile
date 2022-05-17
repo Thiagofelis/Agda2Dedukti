@@ -4,25 +4,25 @@ compile:
 	stack build
 
 theory-objects:
-	cd theory/dk/eta && rm -f *.dko ; dkcheck -e univ.dk && dkcheck -e Agda.dk
+#	cd theory/dk/eta && rm -f *.dko ; dkcheck -e univ.dk && dkcheck -e Agda.dk
 	cd theory/dk/noEta && rm -f *.dko ; dkcheck -e univ.dk && dkcheck -e Agda.dk
 	cd theory/lp/AgdaTheory && make clean && make install
 
 # all tests
 test: theory-objects 
-	cd tests && bash test.sh "1 2 3 4"
+	cd tests && bash test.sh "1 3"
 
 # all tests, in verbose mode
 test-verbose: theory-objects
-	cd tests && bash test.sh "1 2 3 4" -v
+	cd tests && bash test.sh "1 3" -v
 
 # only dk tests
 test-dk: theory-objects
-	cd tests && bash test.sh "1 2"
+	cd tests && bash test.sh "1"
 
 # only lp tests
 test-lp: theory-objects
-	cd tests && bash test.sh "3 4"
+	cd tests && bash test.sh "3"
 
 # NB ?= -1
 # TIMEOUT ?=0

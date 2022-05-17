@@ -37,10 +37,6 @@ data DkDefinition =
     } deriving (Show)
 
 
-etaExpandSymb :: DkName
-etaExpandSymb = DkSpecial EtaExpandSymb
---etaExpandSymb = DkQualified ["Agda"] [] "etaExpand"
-
 printDecl :: DkModName -> DkMode -> DkDefinition -> Doc
 printDecl mods dkMode
   (DkDefinition {name=defName, staticity=defStat, typ=defType, kind=defSort}) =
@@ -275,25 +271,14 @@ printTerm pos mods dkMode boundCtx (DkQuantifLevel sort varName coDom)   =
 printTerm pos mods dkMode boundCtx (DkConst name)        =
   prettyDk mods dkMode boundCtx name
 printTerm pos mods dkMode boundCtx (DkApp t u)           =
-  case t of
-    DkApp (DkApp (DkConst n) s) ty | n == etaExpandSymb ->
-      case u of
-        DkApp (DkApp (DkApp (DkConst n2) s2) ty2) v | n2 == etaExpandSymb ->
-          printTerm pos mods dkMode boundCtx $
-          DkApp (DkApp (DkApp (DkConst n) s) ty) v
-        otherwise -> defaultCase
-    otherwise -> defaultCase
-  where
-    -- Beta-redices can be created by the expansion of copies.
-    defaultCase =
-      let tPos =
-            case t of
-              DkLam _ _ _-> Nested
-              otherwise -> Top
-      in
-      paren pos $
-        printTerm tPos mods dkMode boundCtx t <+>
-        printTerm Nested mods dkMode boundCtx u
+  let tPos =
+        case t of
+          DkLam _ _ _-> Nested
+          otherwise -> Top
+  in
+    paren pos $
+    printTerm tPos mods dkMode boundCtx t <+>
+    printTerm Nested mods dkMode boundCtx u
 
 printTerm pos mods dkMode boundCtx (DkLam varName Nothing coDom)      =
   paren pos $
@@ -414,8 +399,7 @@ type DkCtx = [DkIdent]
 
 
 data DkSpecial =
-    TermSymb
-  | EtaExpandSymb
+  TermSymb
   deriving (Eq, Show)
 
 data DkName =
@@ -428,7 +412,6 @@ data DkName =
 
 instance PrettyDk DkName where
   prettyDk mods dkMode boundCtx (DkSpecial TermSymb)       = pEl dkMode
-  prettyDk mods dkMode boundCtx (DkSpecial EtaExpandSymb)  = pEta dkMode  
   prettyDk mods dkMode boundCtx (DkLocal n)            = printIdent dkMode boundCtx n
   prettyDk mods dkMode boundCtx (DkQualified qualif pseudo n) =
     let modName =
@@ -576,10 +559,6 @@ pProp LpMode = text "prop"
 pOmega :: DkMode -> Doc
 pOmega DkMode = text "Agda.sortOmega"
 pOmega LpMode = text "setω"
-
-pEta :: DkMode -> Doc
-pEta DkMode = text "Agda.etaExpand"
-pEta LpMode = text "η"
 
 pSymb :: DkMode -> Doc
 pSymb DkMode = text "def "
