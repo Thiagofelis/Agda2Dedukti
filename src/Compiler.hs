@@ -24,7 +24,7 @@ import GHC.Generics (Generic)
 import Text.Regex.TDFA ((=~), getAllTextMatches)
 import Data.List.Unique (sortUniq)
 
-import Agda.Compiler.Backend
+import qualified Agda.Compiler.Backend as Backend
 import Agda.Compiler.Common
 import Agda.Interaction.Options
 import qualified Agda.Syntax.Concrete.Name as CN
@@ -40,7 +40,7 @@ import Agda.TypeChecking.Level
 import Agda.TypeChecking.ReconstructParameters
 import Agda.TypeChecking.RecordPatterns
 import Agda.TypeChecking.Records
-import Agda.TypeChecking.Monad.Builtin
+import Agda.TypeChecking.Monad
 import Agda.TypeChecking.Primitive.Base
 import Agda.TypeChecking.Reduce
 import Agda.TypeChecking.Substitute
@@ -58,34 +58,34 @@ import ElimPattMatch.Constructions
 -- Backend callbacks
 ------------------------------------------------------------------------------
 
-dkBackend :: Backend
-dkBackend = Backend dkBackend'
+dkBackend :: Backend.Backend
+dkBackend = Backend.Backend dkBackend'
 
-dkBackend' :: Backend' DkOptions DkOptions () () DkCompiled
-dkBackend' = Backend'
-  { backendName           = "Dk"
-  , backendVersion        = Nothing
-  , options               = defaultDkOptions
-  , commandLineFlags      = dkCommandLineFlags
-  , isEnabled             = optDkCompile
+dkBackend' :: Backend.Backend' DkOptions DkOptions () () Definition
+dkBackend' = Backend.Backend'
+  { Backend.backendName           = "Dk"
+  , Backend.backendVersion        = Nothing
+  , Backend.options               = defaultDkOptions
+  , Backend.commandLineFlags      = dkCommandLineFlags
+  , Backend.isEnabled             = optDkCompile
       -- ^ Flag which enables the Dedukti Backend
-  , preCompile            = \opts -> return opts
+  , Backend.preCompile            = \opts -> return opts
       -- ^ Called after type checking completes, but before compilation starts.  
-  , postCompile           = \_ _ _ -> return ()
+  , Backend.postCompile           = \_ _ _ -> return ()
       -- ^ Called after module compilation has completed. The @IsMain@ argument
       --   is @NotMain@ if the @--no-main@ flag is present.  
-  , preModule             = dkPreModule
+  , Backend.preModule             = dkPreModule
       -- ^ Called before compilation of each module. Gets the path to the
       --   @.agdai@ file to allow up-to-date checking of previously written
       --   compilation results. Should return @Skip m@ if compilation is not
       --   required.  
-  , postModule            = dkPostModule
+  , Backend.postModule            = dkPostModule
       -- ^ Called after all definitions of a module have been compiled.  
-  , compileDef            = dkCompileDef
+  , Backend.compileDef            = \_ _ _ def -> return def
       -- ^ Compile a single definition.  
-  , scopeCheckingSuffices = False
+  , Backend.scopeCheckingSuffices = False
       -- ^ True if the backend works if @--only-scope-checking@ is used.  
-  , mayEraseType          = \_ -> return True
+  , Backend.mayEraseType          = \_ -> return True
       -- ^ The treeless compiler may ask the Backend if elements
       --   of the given type maybe possibly erased.
       --   The answer should be 'False' if the compilation of the type
@@ -95,8 +95,6 @@ dkBackend' = Backend'
 ------------------------------------------------------------------------------
 --- Options ---
 ------------------------------------------------------------------------------
-
-type DkCompiled = Maybe (Int32,DkDefinition)
 
 
 data DkOptions = DkOptions
@@ -150,7 +148,7 @@ type EtaMode = Bool
 --- Module compilation ---
 ------------------------------------------------------------------------------
 
-dkPreModule :: DkOptions -> IsMain -> ModuleName -> Maybe FilePath -> TCM (Recompile () ())
+dkPreModule :: DkOptions -> IsMain -> ModuleName -> Maybe FilePath -> TCM (Backend.Recompile () ())
 dkPreModule opts _ mods _ =
   let path = filePath opts mods in
   let doNotRecompileFile = not (optDkRegen opts) in
@@ -158,23 +156,26 @@ dkPreModule opts _ mods _ =
   do
     fileAlreadyCompiled <- liftIO $ doesFileExist path
     if (fileAlreadyCompiled && doNotRecompileFile) || sizeTypesFile
-    then return $ Skip ()
+    then return $ Backend.Skip ()
     else do liftIO $ putStrLn $ "Generation of " ++ path
-            return $ Recompile ()
+            return $ Backend.Recompile ()
 
-dkPostModule :: DkOptions -> () -> IsMain -> ModuleName -> [DkCompiled] -> TCM ()
-dkPostModule opts _ _ mods defs' =
-  let dkMode = case (optDkModeLp opts) of False -> DkMode
-                                          True  -> LpMode in
-  let defs = map (\(mutualId, def) -> (mutualId, toDkDocs (modName2DkModIdent mods) dkMode def))
-             (catMaybes defs') in
+dkPostModule :: DkOptions -> () -> IsMain -> ModuleName -> [Definition] -> TCM ()
+dkPostModule opts _ _ mods defs =
+  do
+    let dkMode = case (optDkModeLp opts) of False -> DkMode
+                                            True  -> LpMode
 
--- We sort the file, to make sure that declarations and rules
--- do not refer to formerly declared symbols.    
-  let output = show $ orderDeclRules defs in
-  let outLp = addRequires opts output in
-  liftIO $ writeFile (filePath opts mods) (if (optDkModeLp opts) then outLp else output)
+    translatedDefs' <- mapM (\def -> translateDef opts def) defs
+    let translatedDefs =
+          map (\(mutualId, def) -> (mutualId, toDkDocs (modName2DkModIdent mods) dkMode def))
+          (catMaybes translatedDefs')
 
+    -- We sort the file, to make sure that declarations and rules
+    -- do not refer to formerly declared symbols.    
+    let output = show $ orderDeclRules translatedDefs
+    let outLp = addRequires opts output
+    liftIO $ writeFile (filePath opts mods) (if (optDkModeLp opts) then outLp else output)
 
 -- this functions goes through the text that is going to be printed in the .lp file
 -- and seee which modules it uses and add a require for them. using regular
@@ -236,8 +237,8 @@ orderDeclRules' mut accTy accOther accRules l@((m,(a,b,c)):tl)
 -- The main function --
 ------------------------------------------------------------------------------
 
-dkCompileDef :: DkOptions -> () -> IsMain -> Definition -> TCM DkCompiled
-dkCompileDef dkOpts _ _ def@(Defn {defCopy=isCopy, defName=n, theDef=d, defType=t, defMutual=MutId m}) =
+translateDef :: DkOptions -> Definition -> TCM (Maybe (Int32, DkDefinition))
+translateDef dkOpts def@(Defn {defCopy=isCopy, defName=n, theDef=d, defType=t, defMutual=MutId m}) =
   if isCopy
   then do
     reportSDoc "toDk" 8 $ (\x -> text "  No compilation of"<+>x<+>text "which is a copy") <$> AP.prettyTCM n
@@ -266,10 +267,6 @@ dkCompileDef dkOpts _ _ def@(Defn {defCopy=isCopy, defName=n, theDef=d, defType=
             , typ       = typ
             , kind      = kind
             , rules     = rules}
-
---      let dkMode = case (optDkModeLp dkOpts) of False -> DkMode
---                                                True  -> LpMode
---      let printedDef = toDkDocs (modName2DkModIdent mod) dkMode dkDef
       return $ Just (m, dkDef)
 
 translateType :: Type -> TCM DkTerm
