@@ -23,6 +23,7 @@ source-repository head
 library
   exposed-modules:
       Compiler
+      DkMonad
       DkSyntax
       ElimPattMatch.Constructions
   other-modules:

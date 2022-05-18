@@ -1,15 +1,16 @@
+{-# LANGUAGE FlexibleContexts #-}
 module ElimPattMatch.Constructions where
 
 import qualified Data.Map as Map
 import Text.PrettyPrint
 
 import Agda.Utils.Pretty (pretty)
-
 import Agda.Syntax.Internal
 import Agda.TypeChecking.Substitute
 import qualified Agda.TypeChecking.Pretty as AP
 import Agda.TypeChecking.Telescope
 import Agda.TypeChecking.Level
+import Agda.TypeChecking.CheckInternal
 import Agda.TypeChecking.Sort
 import Agda.TypeChecking.CompiledClause
 import Agda.TypeChecking.Monad.Base
@@ -19,7 +20,13 @@ import Agda.TypeChecking.Monad.Signature
 import Agda.TypeChecking.Monad.Builtin
 import Agda.Syntax.Common
 import Agda.Utils.Size
+import qualified Agda.Syntax.Concrete.Name as CN
 import Agda.Utils.Impossible
+import Data.List.NonEmpty (fromList, toList)
+
+import Control.Monad.State
+
+import DkMonad
 
 genList 0 = []
 genList n = (n - 1) : (genList (n - 1))
@@ -77,6 +84,7 @@ mkEnd dataname numPars =
 
     let returnTy = Var 1 $ genElim 1
     sortReturnTy <- addContext ("x", defaultDom dataAppliedToPars') $ sortOf returnTy
+--    reportSDoc "toDk.elimPattMatch" 20  $ AP.prettyTCM sortReturnTy
     let returnTy' = El{_getSort= sortReturnTy, unEl= returnTy}
     let ty =
           Pi (defaultDom dataAppliedToPars')
@@ -89,7 +97,7 @@ mkEnd dataname numPars =
 
 -- given dataype name D, generates the type of case_D
 -- mkCase :: forall m. (MonadTCM m, MonadState ToDKState m) => QName -> m Type
-mkCase :: QName -> TCM Type
+mkCase :: DkMonad m => QName -> m Definition
 mkCase qname =
   do
 {-    st <- gets fieldName
@@ -103,11 +111,11 @@ mkCase qname =
 
     -- tel = i : Level, p : Pars
     let tel = ExtendTel (defaultDom levelType) (Abs{absName = "i", unAbs = pars'})
-    motiveTy <- addContext tel $ mkMotiveType qname $ length pars'
+    motiveTy <- liftTCM $ addContext tel $ mkMotiveType qname $ length pars'
 
     -- tel' = i : Level, p : Pars, P : D p -> Set_i
     let tel' = tel `abstract` (ExtendTel (defaultDom motiveTy) Abs{absName =  "P", unAbs = EmptyTel})
-    methods <- addContext tel' $ mapM mkCaseMethod cons
+    methods <- liftTCM $ addContext tel' $ mapM mkCaseMethod cons
     let methodsRaised =
           reverse $ fst $
           foldl (\(l, n) x -> ((raise n x, "M_" ++ (show n)) : l, n + 1)) ([], 0) methods
@@ -117,11 +125,30 @@ mkCase qname =
                 (\acc (ty, s) -> acc `abstract`
                                  (ExtendTel (defaultDom ty) Abs{absName=s, unAbs=EmptyTel}))
                 tel' methodsRaised
-    end <- addContext tel' $ mkEnd qname numPars
+    end <- liftTCM $ addContext tel' $ mkEnd qname numPars
 
-    return $ telePi_ tel'' $ raise (length cons) end
+    let caseType = telePi_ tel'' $ raise (length cons) end   
+    _ <- liftTCM $ checkType' caseType -- checks it is well-sorted
+    -- we have finished building the type of case, now we add it to the signature
 
-  
+
+    let dataTypeNameString = concat $
+                             map (\x -> case x of
+                                          CN.Hole -> "_"
+                                          CN.Id s -> s)
+                             $ toList $ CN.nameNameParts $ nameConcrete $ qnameName qname
+    caseName <- liftTCM $ freshName_ $ "case" ++ dataTypeNameString
+    let caseQName = QName{qnameModule = qnameModule qname, qnameName = caseName}
+
+    let theCase = defaultDefn defaultArgInfo caseQName caseType WithoutK Axiom{axiomConstTransp=False}
+    
+    liftTCM $ addConstant caseQName $ theCase
+      
+
+    dkState@DkState{caseOfData = caseOfData} <- get
+    put $ dkState{caseOfData = (\x -> if x == qname then Just caseQName else caseOfData x)}
+    return theCase
+      
 telNames :: Telescope -> [String]
 telNames EmptyTel = []
 telNames (ExtendTel _ Abs{absName = name, unAbs = nextTel}) = name : (telNames nextTel)
@@ -131,7 +158,8 @@ telNames (ExtendTel _ Abs{absName = name, unAbs = nextTel}) = name : (telNames n
 -- a constructor c of D, of type {p : pars} -> (a : Phi) -> D pars
 -- produces Gamma |- (a : Phi) -> Delta{c a/x} -> returnTy{c a/x},
 -- calling compiledClausesToCase recursively
-buildMethod :: Telescope -> QName -> Elims -> Telescope -> Type -> QName -> CompiledClauses -> TCM Term
+buildMethod :: DkMonad m =>
+               Telescope -> QName -> Elims -> Telescope -> Type -> QName -> CompiledClauses -> m Term
 buildMethod gamma d pars delta returnTy consName compiledC =
   do
     -- Gamma |- pars : Pars
@@ -184,7 +212,9 @@ buildMethod gamma d pars delta returnTy consName compiledC =
     
     return raised_t
 
-buildMethodCatchAll :: Telescope -> Telescope -> QName -> Elims -> Telescope -> Type -> QName -> CompiledClauses -> TCM Term
+buildMethodCatchAll :: DkMonad m =>
+                       Telescope -> Telescope -> QName -> Elims -> Telescope ->
+                       Type -> QName -> CompiledClauses -> m Term
 buildMethodCatchAll fullTel gamma d pars delta returnTy consName compiledC =
   do
     -- gives t with Gamma, x : D p, Delta |- t : A
@@ -228,7 +258,7 @@ buildMethodCatchAll fullTel gamma d pars delta returnTy consName compiledC =
     
 
           
-compiledClausesToCase :: Telescope -> Type -> CompiledClauses -> TCM Term
+compiledClausesToCase :: DkMonad m => Telescope -> Type -> CompiledClauses -> m Term
 compiledClausesToCase tel returnTy (Done _ body) = return body -- trivial node
 compiledClausesToCase tel returnTy tree@(Case n bs) =
   do
@@ -278,7 +308,9 @@ compiledClausesToCase tel returnTy tree@(Case n bs) =
         
 --    reportSDoc "toDk.elimPattMatch" 20 $ AP.prettyTCM $ Def d finalElim
 
-    return $ Def d finalElim
+    caseOfData <- gets caseOfData
+    let Just caseName = caseOfData d
+    return $ Def caseName finalElim
 
 
 

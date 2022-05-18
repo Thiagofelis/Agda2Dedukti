@@ -52,6 +52,7 @@ import Agda.Utils.Pretty (pretty)
 import Agda.Utils.Impossible
 
 import DkSyntax
+import DkMonad
 import ElimPattMatch.Constructions
 
 ------------------------------------------------------------------------------
@@ -144,14 +145,6 @@ dkCommandLineFlags =
 
 type EtaMode = Bool
 
-data DkState = DkState
-  {
-    dkUnit :: ()
-,   caseQNames :: QName -> Maybe QName
-  }
-             
-type DkM a = StateT DkState TCM a
-
 -- testFun :: (MonadTCM m, MonadState DkState m) => () -> m ()
 -- testFun () = do return ()
 
@@ -181,10 +174,10 @@ dkPostModule opts _ _ mods defs =
       evalStateT
       (mapM (\def -> translateDef opts def) defs)
       DkState{dkUnit=(),
-              caseQNames = (\_ -> Nothing) }
+              caseOfData = (\_ -> Nothing) }
     let translatedDefs =
           map (\(mutualId, def) -> (mutualId, toDkDocs (modName2DkModIdent mods) dkMode def))
-          (catMaybes translatedDefs')
+          (concat translatedDefs')
 
     -- We sort the file, to make sure that declarations and rules
     -- do not refer to formerly declared symbols.    
@@ -252,28 +245,31 @@ orderDeclRules' mut accTy accOther accRules l@((m,(a,b,c)):tl)
 -- The main function --
 ------------------------------------------------------------------------------
 
-translateDef :: (MonadTCM m, MonadState DkState m) =>
-                DkOptions -> Definition -> m (Maybe (Int32, DkDefinition))
+translateDef :: DkMonad m => DkOptions -> Definition -> m [(Int32, DkDefinition)]
 translateDef dkOpts def@(Defn {defCopy=isCopy, defName=n, theDef=d, defType=t, defMutual=MutId m}) =
   if isCopy
   then do
-    liftTCM $ reportSDoc "toDk" 8 $ (\x -> text "  No compilation of"<+>x<+>text "which is a copy") <$> AP.prettyTCM n
-    return Nothing
+    reportSDoc "toDk" 8 $ (\x -> text "  No compilation of"<+>x<+>text "which is a copy") <$> AP.prettyTCM n
+    return []
   else do
-    liftTCM $ reportSDoc "toDk" 3 $ (text "  Compiling definition of" <+>) <$> AP.prettyTCM n
-    liftTCM $ reportSDoc "toDk" 10 $ return $ text "    of type" <+> pretty t
-    liftTCM $ reportSDoc "toDk" 60 $ return $ text "    " <> pretty def
+    reportSDoc "toDk" 3 $ (text "  Compiling definition of" <+>) <$> AP.prettyTCM n
+    reportSDoc "toDk" 10 $ return $ text "    of type" <+> pretty t
+    reportSDoc "toDk" 60 $ return $ text "    " <> pretty def
 
-    liftTCM $ inTopContext $ do
+    extraDefs <- case d of
+                   Datatype{dataIxs = 0} -> generateCase dkOpts n
+                   _ -> return []
+
+    inTopContext $ do -- why in top context ?
       reportSDoc "toDk" 15 $ return $ text "Getting type"
-      t' <- reconstructParametersInType' defaultAction t -- t with parameters reconstructed
-      typ        <- translateType t'
+      t' <- liftTCM $ reconstructParametersInType' defaultAction t -- t with parameters reconstructed
+      typ        <- liftTCM $ translateType t'
       reportSDoc "toDk" 15 $ return $ text "Getting name"      
-      Right name <- qName2DkName n -- n is not a copy
+      Right name <- liftTCM $ qName2DkName n -- n is not a copy
       reportSDoc "toDk" 15 $ return $ text "Getting kind"
-      kind       <- getKind t
+      kind       <- liftTCM $ getKind t
       reportSDoc "toDk" 15 $ return $ text "Getting staticity"
-      stat       <- extractStaticity n d
+      stat       <- liftTCM $ extractStaticity n d
       reportSDoc "toDk" 15 $ return $ text "Getting rules of " <+> pretty d
       rules      <- extractRules n d t
 
@@ -283,7 +279,7 @@ translateDef dkOpts def@(Defn {defCopy=isCopy, defName=n, theDef=d, defType=t, d
             , typ       = typ
             , kind      = kind
             , rules     = rules}
-      return $ Just (m, dkDef)
+      return $ (m, dkDef) : extraDefs
 
 translateType :: Type -> TCM DkTerm
 -- a type is a term with a sort annotation (as in nat : Set0)
@@ -308,26 +304,33 @@ extractStaticity _ (PrimitiveSort {})    = return Defin
 extractStaticity _ (AbstractDefn {})    = return Static
 
 
+generateCase :: DkMonad m => DkOptions -> QName -> m [(Int32, DkDefinition)]
+generateCase dkOpts qname =
+  do
+    theCase <- mkCase qname
+    translateDef dkOpts theCase
   
-extractRules :: QName -> Defn -> Type -> TCM [DkRule]
+extractRules :: DkMonad m => QName -> Defn -> Type -> m [DkRule]
 extractRules n (funDef@Function {}) ty =
   do
 
-{-    
+
     
     -- TO TEST ELIM PATT MATCH --
     let Just compiledClauses = funCompiled funDef
     reportSDoc "toDk.elimPattMatch" 20 $ return $ pretty compiledClauses    
     TelV{ theTel = tel, theCore = returnTy} <- telView ty
-    t <- compiledClausesToCase tel returnTy compiledClauses
+    t <- compiledClausesToCase tel returnTy compiledClauses    
     let t' = teleLam tel t
     reportSDoc "toDk.elimPattMatch" 20 $ AP.prettyTCM t'
+--    _ <- liftTCM $ infer t'        
     reportSDoc "toDk.elimPattMatch" 20 $ AP.prettyTCM ty
---    checkInternal t' CmpLeq ty
+    liftTCM $ checkInternal t' CmpEq ty
     -- END --
 
-    rhsDk <- translateTerm env etaMode t'
-    Right dkName <- qName2DkName etaMode n
+    t'' <- liftTCM $ reconstructParameters' defaultAction ty t'
+    rhsDk <- liftTCM $ translateTerm t''
+    Right dkName <- liftTCM $ qName2DkName n
 
     return $ [DkRule
       { decoding  = False
@@ -336,7 +339,7 @@ extractRules n (funDef@Function {}) ty =
       , patts     = []
       , rhs       = rhsDk
       }]
--}
+{-
 
     -- if this is an alias function, it does not go through the covering checker,
     -- the only way to know if this is the case is to check if funCovering is empty
@@ -372,40 +375,41 @@ extractRules n (funDef@Function {}) ty =
               (return $ pretty $ funClauses funDef )
             return $ funClauses funDef
 
-    l  <- mapM (clause2rule n) clauses
+    l  <- liftTCM $ mapM (clause2rule n) clauses
     return $ catMaybes l
+
+-}
 
 
 extractRules n (Datatype {dataCons=cons, dataClause=dataClauses, dataPars=i, dataIxs=j}) ty=
   do
-    {-
+
     -- TEST mkCaseMethod
-    caseType <- mkCase n
-    sort <- checkType' caseType
+    {- sort <- liftTCM $ checkType' caseType
     reportSDoc "toDk.elimPattMatch" 20 $ AP.prettyTCM sort
-    caseName <- freshName_ $ "case-D"
-    modName <- freshName_ $ "testmod"         
+    caseName <- liftTCM $ freshName_ $ "case"
+    modName <- liftTCM $ freshName_ $ "testmod"         
     let caseQname = QName{qnameModule = MName{mnameToList = [modName]}, qnameName = caseName}
-    addConstant caseQname $
+    liftTCM $ addConstant caseQname $
       defaultDefn defaultArgInfo caseQname caseType WithoutK Axiom{axiomConstTransp=False}
-    reportSDoc "toDk.elimPattMatch" 20 $ AP.prettyTCM caseType
+    reportSDoc "toDk.elimPattMatch" 20 $ AP.prettyTCM caseType -}
     -- END OF TEST
--}
+
 
     l <- case dataClauses of
-           Just c  -> sequence [clause2rule n c, Just <$> decodedVersion n (i+j)]
-           Nothing -> sequence [Just <$> decodedVersion n (i+j)]
+           Just c  -> liftTCM $ sequence [clause2rule n c, Just <$> decodedVersion n (i+j)]
+           Nothing -> liftTCM $ sequence [Just <$> decodedVersion n (i+j)]
     return $ catMaybes l
 extractRules n (t@Record {recClause=clauses, recPars=i, recConHead=hd, recFields=f}) ty =
   do
-    translatedClauses <- maybe (return []) (\c -> sequence [clause2rule n c]) clauses
-    decodedVers <- sequence [Just <$> decodedVersion n i]
+    translatedClauses <- liftTCM $ maybe (return []) (\c -> sequence [clause2rule n c]) clauses
+    decodedVers <- liftTCM $ sequence [Just <$> decodedVersion n i]
     return $ catMaybes $ translatedClauses ++ decodedVers
     
 extractRules n (Primitive {primClauses=p}) ty =
   do
-    recordCleaned <- mapM translateRecordPatterns p
-    l <- mapM (clause2rule n) recordCleaned
+    recordCleaned <- liftTCM $ mapM translateRecordPatterns p
+    l <- liftTCM $ mapM (clause2rule n) recordCleaned
     return $ catMaybes l
 extractRules _ _ _                            = sequence []
 
@@ -907,31 +911,43 @@ translateTerm (DontCare t) = translateTerm t
 translateTerm (Dummy _ _) = error "Not implemented yet : Dummy"
 
 extractSort :: Sort -> TCM DkSort
-extractSort (Type i)                  =
+extractSort s = (reduce s) >>= extractSort'
+extractSort' (Type i)                  =
   DkSet <$> lvlFromLevel i
-extractSort (Prop i)                  =
+extractSort' (Prop i)                  =
   DkProp <$> lvlFromLevel i
 -- for the time beeing we translate all the SetOmegai to the same sort
 -- this clearly makes the theory inconsistent, but it should work for now
-extractSort (Inf _ _)                 =
+extractSort' (Inf _ _)                 =
   return DkSetOmega
-extractSort SizeUniv                  =
+extractSort' SizeUniv                  =
   return $ DkSizeUniv
 
 -- not sure about the following change
 
-extractSort (PiSort _ s t) = do
+
+-- THIS MIGHT BE WRONG !!!!!!! --
+extractSort' (PiSort _ s t) = do
   dom <- extractSort s
   codom <- extractSort (unAbs t)
   return $ DkPi dom codom
+
+-- CHANGE ME IF PROBLEM
+{-extractSort (FunSort s t) = do
+  dom <- extractSort s
+  codom <- extractSort t
+  return $ DkPi dom codom-}
+
+
 
 --extractSort env (PiSort (Dom{unDom=s}) t) = do
 --  dom <- extractSort env (_getSort s)
 --  codom <- extractSort env (unAbs t)
 --  return $ DkPi dom codom
-extractSort (UnivSort s)              =
+extractSort' (UnivSort s)              =
   DkUniv <$> extractSort s
-extractSort _                         =
+extractSort' s                         = do
+  reportSDoc "toDk.elimPattMatch" 20 $ return $ pretty s
   return DkDefaultSort
 
 lvlOf :: Sort -> TCM Lvl
