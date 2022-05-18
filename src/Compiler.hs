@@ -173,7 +173,13 @@ dkPostModule opts _ _ mods defs =
 
     translatedDefs' <-
       evalStateT
-      (mapM (\def -> translateDef opts def) defs)
+      (mapM (\def ->
+               case theDef def of
+                 Constructor{} -> -- compilation of constructor c of D is handled by compilation of D
+                   return []
+                 _             ->
+                   translateDef opts def)
+       defs)
       DkState{dkUnit=(),
               caseOfData = (\_ -> Nothing) }
     let translatedDefs =
@@ -257,9 +263,18 @@ translateDef dkOpts def@(Defn {defCopy=isCopy, defName=n, theDef=d, defType=t, d
     reportSDoc "toDk" 10 $ return $ text "    of type" <+> pretty t
     reportSDoc "toDk" 60 $ return $ text "    " <> pretty def
 
-    extraDefs <- case d of
-                   Datatype{dataIxs = 0} -> generateCase dkOpts n
-                   _ -> return []
+    extraDefs <-
+      case d of
+        Datatype{dataIxs = numIndices, dataCons = consNames} -> do
+          compiledCase <-
+            if numIndices /= 0 then return []
+            else do
+              theCase <- mkCase n
+              translateDef dkOpts theCase{defMutual=MutId m} -- change the mutual id, to print in order
+          consDefs <- mapM getConstInfo consNames
+          consTranslated <- concat <$> mapM (translateDef dkOpts) consDefs
+          return $ consTranslated ++ compiledCase
+        _ -> return []
 
     inTopContext $ do -- why in top context ?
       reportSDoc "toDk" 15 $ return $ text "Getting type"
@@ -305,11 +320,6 @@ extractStaticity _ (PrimitiveSort {})    = return Defin
 extractStaticity _ (AbstractDefn {})    = return Static
 
 
-generateCase :: DkMonad m => DkOptions -> QName -> m [(Int32, DkDefinition)]
-generateCase dkOpts qname =
-  do
-    theCase <- mkCase qname
-    translateDef dkOpts theCase
   
 extractRules :: DkMonad m => QName -> Defn -> Type -> m [DkRule]
 extractRules n (funDef@Function {}) ty =
