@@ -43,8 +43,8 @@ removeParams tel@(ExtendTel x y) = if argInfoHiding (domInfo x) == Hidden
                                         
 -- given constructor c : {p : Pars} -> (a : Phi) -> D p,
 -- builds type (a : Phi) -> P (c p a) in context i : Level, p : Pars, P : D p -> Set_i
-mkCaseMethod :: QName -> TCM Type
-mkCaseMethod conName =
+mkCaseMethodType :: QName -> TCM Type
+mkCaseMethodType conName =
   do
     consType <- defType <$> getConstInfo conName
     tel' <- theTel <$> telView consType
@@ -77,8 +77,8 @@ mkMotiveType dataname numPars =
 
 -- given type D with numPars parameters
 -- build the type (x : D p) -> P x in context i : Level, p : Pars, P : D p -> Set_i
-mkEnd :: QName -> Int -> TCM Type
-mkEnd dataname numPars =
+mkEndType :: QName -> Int -> TCM Type
+mkEndType dataname numPars =
   do
     let dataAppliedToPars = raise 1 $ Def dataname $ genElim numPars
     sortDataAppliedToPars <- sortOf dataAppliedToPars
@@ -95,29 +95,18 @@ mkEnd dataname numPars =
     sortTy <- sortOf ty
     return El{_getSort = sortTy, unEl = ty}
 
--- runState (mkCase ...) initState :: MonadTCM m => m (Type,ToDKState)
-
--- given dataype name D, generates the type of case_D
--- mkCase :: forall m. (MonadTCM m, MonadState ToDKState m) => QName -> m Type
-mkCase :: DkMonad m => QName -> m Definition
-mkCase qname =
+mkCaseType :: DkMonad m => QName -> Telescope -> [QName] -> m Type
+mkCaseType qname pars cons =
   do
-{-    st <- gets fieldName
-    put st
-    modify -}
-    
-    Datatype{dataPars = numPars, dataCons = cons} <- theDef <$> getConstInfo qname
-    dType <- defType <$> getConstInfo qname
-    pars' <- theTel <$> telView dType
     levelType <- levelType
-
     -- tel = i : Level, p : Pars
-    let tel = ExtendTel (defaultDom levelType) (Abs{absName = "i", unAbs = pars'})
-    motiveTy <- liftTCM $ addContext tel $ mkMotiveType qname $ length pars'
+    let tel = ExtendTel (defaultDom levelType) (Abs{absName = "i", unAbs = pars})
+
+    motiveTy <- liftTCM $ addContext tel $ mkMotiveType qname $ length pars
 
     -- tel' = i : Level, p : Pars, P : D p -> Set_i
     let tel' = tel `abstract` (ExtendTel (defaultDom motiveTy) Abs{absName =  "P", unAbs = EmptyTel})
-    methods <- liftTCM $ addContext tel' $ mapM mkCaseMethod cons
+    methods <- liftTCM $ addContext tel' $ mapM mkCaseMethodType cons
     let methodsRaised =
           reverse $ fst $
           foldl (\(l, n) x -> ((raise n x, "M_" ++ (show n)) : l, n + 1)) ([], 0) methods
@@ -127,18 +116,43 @@ mkCase qname =
                 (\acc (ty, s) -> acc `abstract`
                                  (ExtendTel (defaultDom ty) Abs{absName=s, unAbs=EmptyTel}))
                 tel' methodsRaised
-    end <- liftTCM $ addContext tel' $ mkEnd qname numPars
+    end <- liftTCM $ addContext tel' $ mkEndType qname $ length pars
 
     let caseType = telePi_ tel'' $ raise (length cons) end   
     _ <- liftTCM $ checkType' caseType -- checks it is well-sorted
-    -- we have finished building the type of case, now we add it to the signature
 
+    return caseType
+
+{-
+mkCaseClause :: DkMonad m => QName -> QName -> Type -> QName -> m Clause
+mkCaseClause dname caseName caseTy consName =
+  do
+    TelV{theTel = tel, theCore = clauseTy} <- telView dType
+
+    cons <- getConstInfo consName
+    numConsArgs <- numConsArgs <$> removeParams <$> theTel <$> telView $ defType $ cons
+
+    instantiateWithConstructor tel dname pars EmptyTel returnTy consName
+-}
+
+
+
+-- given dataype name D, generates the type of case_D
+mkCase :: DkMonad m => QName -> m Definition
+mkCase qname =
+  do
+    Datatype{dataCons = cons} <- theDef <$> getConstInfo qname
+    dType <- defType <$> getConstInfo qname
+    pars <- theTel <$> telView dType
+
+    caseType <- mkCaseType qname pars cons
+    -- we have finished building the type of case, now we add it to the signature
 
     let dataTypeNameString = concat $
                              map (\x -> case x of
                                           CN.Hole -> "_"
-                                          CN.Id s -> s)
-                             $ toList $ CN.nameNameParts $ nameConcrete $ qnameName qname
+                                          CN.Id s -> s) $
+                             toList $ CN.nameNameParts $ nameConcrete $ qnameName qname
     caseName <- liftTCM $ freshName_ $ "case" ++ dataTypeNameString
     let caseQName = QName{qnameModule = qnameModule qname, qnameName = caseName}
 
@@ -156,19 +170,15 @@ telNames EmptyTel = []
 telNames (ExtendTel _ Abs{absName = name, unAbs = nextTel}) = name : (telNames nextTel)
 
 
--- Given Gamma, x : D pars, Delta |- returnTy,
--- a constructor c of D, of type {p : pars} -> (a : Phi) -> D pars
--- produces Gamma |- (a : Phi) -> Delta{c a/x} -> returnTy{c a/x},
--- calling compiledClausesToCase recursively
-buildMethod :: DkMonad m =>
-               Telescope -> QName -> Elims -> Telescope -> Type -> QName -> CompiledClauses ->
-               MaybeT m Term
-buildMethod gamma d pars delta returnTy consName compiledC =
+-- given Gamma, x : D pars, Delta |- A
+-- and a constructor c : {pars : Pars} -> Phi -> D pars of D
+-- returns Gamma, a : Phi, Delta{c a/x} |- A{c a/x}
+instantiateWithConstructor :: DkMonad m => Telescope -> QName -> Elims -> Telescope -> Type -> QName ->
+                              m (Telescope, Telescope, Telescope, Type)
+instantiateWithConstructor gamma d pars delta returnTy consName =
   do
     -- Gamma |- pars : Pars
     let subst = foldl (\acc x -> x :# acc) (EmptyS __IMPOSSIBLE__) $ map (\(Apply x) -> unArg x) pars
-
-    -------- prepares the new telescope before calling compieldClausesToCase --------
 
     cons <- getConstInfo consName
     let consTy = defType cons
@@ -197,14 +207,30 @@ buildMethod gamma d pars delta returnTy consName compiledC =
             let conInfo = ConOCon in
               let consApplied = Con conHead conInfo $ genElim (length consTel') in
                 applySubst (Lift (length delta) (consApplied :# IdS)) returnTy'
+
+    return (gamma, consTel', delta'', returnTy'')
+
+-- Given Gamma, x : D pars, Delta |- returnTy,
+-- a constructor c of D, of type {p : pars} -> (a : Phi) -> D pars
+-- produces a term t with Gamma |- t : (a : Phi) -> Delta{c a/x} -> returnTy{c a/x},
+-- calling compiledClausesToCase recursively
+buildMethod :: DkMonad m =>
+               Telescope -> QName -> Elims -> Telescope -> Type -> QName -> CompiledClauses ->
+               MaybeT m Term
+buildMethod gamma d pars delta returnTy consName compiledC =
+  do
+
+    -- prepares the new telescope before calling compieldClausesToCase
+    (_, consTel', delta', returnTy') <-
+      instantiateWithConstructor gamma d pars delta returnTy consName 
     
-    let newTel = gamma `abstract` (consTel' `abstract` delta'')
+    let newTel = gamma `abstract` (consTel' `abstract` delta')
 
     ---- now that we have computed newTel and returnTy'', we use
     ---- compiledClausesToCase to get a t such that newTel |- t : returnTy''
-    t <- compiledClausesToCase newTel returnTy'' compiledC
+    t <- compiledClausesToCase newTel returnTy' compiledC
 
-    let namesToBeAbstracted = telNames $ consTel' `abstract` delta''
+    let namesToBeAbstracted = telNames $ consTel' `abstract` delta'
 
     -- computes Gamma |- abs_t : (a : Phi) -> Delta' -> returnTy''
     let abstracted_t = foldr (\x recCall -> Lam defaultArgInfo Abs{absName = x, unAbs = recCall})
