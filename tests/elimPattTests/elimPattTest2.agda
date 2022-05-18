@@ -1,5 +1,9 @@
 open import Agda.Builtin.Equality
-open import Agda.Builtin.Nat
+
+data Nat : Set where
+  zero : Nat
+  suc : Nat -> Nat
+
 
 data Test (A B : Set) (a : A) : Set where
   c : (m n : Nat) -> A -> (n ≡ m -> Test A B a) -> Test A B a
@@ -23,6 +27,11 @@ test2 : ∀ {A B a} -> A -> (x : Test A B a) -> x ≡ x -> Nat -> (y : Test A B 
 test2 _ (c m _ _ _) _ _ _ _ _ = refl
 test2 _ _ _ x _ _ _ = refl
 
+
+
+_+_ : Nat -> Nat -> Nat
+zero + y = y
+(suc x) + y = suc (x + y)
 
 
 
