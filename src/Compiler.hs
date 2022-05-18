@@ -7,6 +7,8 @@ module Compiler where
 -- hides (<>), as there was a conflit with the (<>) defined here
 import Prelude hiding ((<>))
 
+import Data.IORef
+
 import Control.Monad.State
 import Control.Monad.Trans.Maybe
 import Control.Exception
@@ -63,7 +65,7 @@ import ElimPattMatch.Constructions
 dkBackend :: Backend.Backend
 dkBackend = Backend.Backend dkBackend'
 
-dkBackend' :: Backend.Backend' DkOptions DkOptions () () Definition
+dkBackend' :: Backend.Backend' DkOptions (DkOptions, IORef DkState) () () Definition
 dkBackend' = Backend.Backend'
   { Backend.backendName           = "Dk"
   , Backend.backendVersion        = Nothing
@@ -71,7 +73,9 @@ dkBackend' = Backend.Backend'
   , Backend.commandLineFlags      = dkCommandLineFlags
   , Backend.isEnabled             = optDkCompile
       -- ^ Flag which enables the Dedukti Backend
-  , Backend.preCompile            = \opts -> return opts
+  , Backend.preCompile            = \opts -> do
+      ref <- liftIO $ newIORef DkState{ caseOfData = (\_ -> Nothing) }
+      return (opts, ref)
       -- ^ Called after type checking completes, but before compilation starts.  
   , Backend.postCompile           = \_ _ _ -> return ()
       -- ^ Called after module compilation has completed. The @IsMain@ argument
@@ -153,8 +157,9 @@ type EtaMode = Bool
 --- Module compilation ---
 ------------------------------------------------------------------------------
 
-dkPreModule :: DkOptions -> IsMain -> ModuleName -> Maybe FilePath -> TCM (Backend.Recompile () ())
-dkPreModule opts _ mods _ =
+dkPreModule :: (DkOptions, IORef DkState) -> IsMain -> ModuleName -> Maybe FilePath ->
+               TCM (Backend.Recompile () ())
+dkPreModule (opts,_) _ mods _ =
   let path = filePath opts mods in
   let doNotRecompileFile = not (optDkRegen opts) in
   let sizeTypesFile = (modName2DkModIdent mods == ["Agda", "Builtin", "Size"]) in
@@ -165,14 +170,16 @@ dkPreModule opts _ mods _ =
     else do liftIO $ putStrLn $ "Generation of " ++ path
             return $ Backend.Recompile ()
 
-dkPostModule :: DkOptions -> () -> IsMain -> ModuleName -> [Definition] -> TCM ()
-dkPostModule opts _ _ mods defs =
+dkPostModule :: (DkOptions, IORef DkState) -> () -> IsMain -> ModuleName -> [Definition] -> TCM ()
+dkPostModule (opts, ref) _ _ mods defs =
   do
     let dkMode = case (optDkModeLp opts) of False -> DkMode
                                             True  -> LpMode
 
-    translatedDefs' <-
-      evalStateT
+    state <- liftIO $ readIORef ref
+    
+    (translatedDefs', newState) <-
+      runStateT
       (mapM (\def ->
                case theDef def of
                  Constructor{} -> -- compilation of constructor c of D is handled by compilation of D
@@ -180,8 +187,10 @@ dkPostModule opts _ _ mods defs =
                  _             ->
                    translateDef opts def)
        defs)
-      DkState{dkUnit=(),
-              caseOfData = (\_ -> Nothing) }
+      state
+
+    liftIO $ writeIORef ref newState
+      
     let translatedDefs =
           map (\(mutualId, def) -> (mutualId, toDkDocs (modName2DkModIdent mods) dkMode def))
           (concat translatedDefs')
