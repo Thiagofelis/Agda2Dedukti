@@ -42,6 +42,7 @@ library
     , pretty
     , regex-tdfa
     , text
+    , transformers
   default-language: Haskell2010
 
 executable Agda2Dedukti-exe
@@ -64,4 +65,5 @@ executable Agda2Dedukti-exe
     , pretty
     , regex-tdfa
     , text
+    , transformers
   default-language: Haskell2010

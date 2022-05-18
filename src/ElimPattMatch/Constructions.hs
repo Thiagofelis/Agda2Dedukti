@@ -25,6 +25,8 @@ import Agda.Utils.Impossible
 import Data.List.NonEmpty (fromList, toList)
 
 import Control.Monad.State
+import Control.Monad.Trans.Maybe
+import Control.Monad
 
 import DkMonad
 
@@ -159,7 +161,8 @@ telNames (ExtendTel _ Abs{absName = name, unAbs = nextTel}) = name : (telNames n
 -- produces Gamma |- (a : Phi) -> Delta{c a/x} -> returnTy{c a/x},
 -- calling compiledClausesToCase recursively
 buildMethod :: DkMonad m =>
-               Telescope -> QName -> Elims -> Telescope -> Type -> QName -> CompiledClauses -> m Term
+               Telescope -> QName -> Elims -> Telescope -> Type -> QName -> CompiledClauses ->
+               MaybeT m Term
 buildMethod gamma d pars delta returnTy consName compiledC =
   do
     -- Gamma |- pars : Pars
@@ -214,7 +217,7 @@ buildMethod gamma d pars delta returnTy consName compiledC =
 
 buildMethodCatchAll :: DkMonad m =>
                        Telescope -> Telescope -> QName -> Elims -> Telescope ->
-                       Type -> QName -> CompiledClauses -> m Term
+                       Type -> QName -> CompiledClauses -> MaybeT m Term
 buildMethodCatchAll fullTel gamma d pars delta returnTy consName compiledC =
   do
     -- gives t with Gamma, x : D p, Delta |- t : A
@@ -258,7 +261,7 @@ buildMethodCatchAll fullTel gamma d pars delta returnTy consName compiledC =
     
 
           
-compiledClausesToCase :: DkMonad m => Telescope -> Type -> CompiledClauses -> m Term
+compiledClausesToCase :: DkMonad m => Telescope -> Type -> CompiledClauses -> MaybeT m Term
 compiledClausesToCase tel returnTy (Done _ body) = return body -- trivial node
 compiledClausesToCase tel returnTy tree@(Case n bs) =
   do
@@ -271,6 +274,13 @@ compiledClausesToCase tel returnTy tree@(Case n bs) =
 
     -- this node is of the form gamma, x : D pars, delta |- returnTy, that is, matching on x : D pars
 
+    dDef <- theDef <$> getConstInfo d
+    -- gets list of constructors of D
+    let constructors = dataCons dDef
+
+    -- we only support non-indexed data
+    guard $ (dataIxs dDef) == 0
+    
     let Type returnLvl = _getSort returnTy
     -- elim = returnLvl
     let elim = [Apply Arg{argInfo = defaultArgInfo, unArg = Level returnLvl}]
@@ -286,9 +296,6 @@ compiledClausesToCase tel returnTy tree@(Case n bs) =
     -- elim '' = returnLvl pars (\x. Delta -> returnTy)
     let elim'' = elim' ++ [motiveTy]
 
-    -- gets list of constructors of D
-    constructors <- dataCons <$> theDef <$> getConstInfo d
-
     -- calculates the methods
     methods <- mapM
                (\consName ->
@@ -302,17 +309,15 @@ compiledClausesToCase tel returnTy tree@(Case n bs) =
 
     -- elim''' = returnLvl pars (\x. Delta -> returnTy) m1 .. mk
     let elim''' = elim'' ++ (map (\x -> Apply Arg{argInfo = defaultArgInfo, unArg = x}) methods)
-    
+
     -- finalElim = returnLvl pars (\x. Delta -> returnTy) m1 .. mk x delta
     let finalElim = elim''' ++ (map (\x -> Apply $ defaultArg $ Var x []) $ genList $ 1 + (size delta))
-        
+
 --    reportSDoc "toDk.elimPattMatch" 20 $ AP.prettyTCM $ Def d finalElim
 
     caseOfData <- gets caseOfData
     let Just caseName = caseOfData d
     return $ Def caseName finalElim
-
-
 
 {-
 compiledClausesToCase tel returnTy tree@(Case n bs) =

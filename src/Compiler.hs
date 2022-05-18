@@ -8,6 +8,7 @@ module Compiler where
 import Prelude hiding ((<>))
 
 import Control.Monad.State
+import Control.Monad.Trans.Maybe
 import Control.Exception
 import Data.Maybe
 import System.Directory (doesFileExist)
@@ -314,71 +315,69 @@ extractRules :: DkMonad m => QName -> Defn -> Type -> m [DkRule]
 extractRules n (funDef@Function {}) ty =
   do
 
-
-    
-    -- TO TEST ELIM PATT MATCH --
     let Just compiledClauses = funCompiled funDef
     reportSDoc "toDk.elimPattMatch" 20 $ return $ pretty compiledClauses    
+
     TelV{ theTel = tel, theCore = returnTy} <- telView ty
-    t <- compiledClausesToCase tel returnTy compiledClauses    
-    let t' = teleLam tel t
-    reportSDoc "toDk.elimPattMatch" 20 $ AP.prettyTCM t'
---    _ <- liftTCM $ infer t'        
-    reportSDoc "toDk.elimPattMatch" 20 $ AP.prettyTCM ty
-    liftTCM $ checkInternal t' CmpEq ty
-    -- END --
+    t <- runMaybeT $ compiledClausesToCase tel returnTy compiledClauses
 
-    t'' <- liftTCM $ reconstructParameters' defaultAction ty t'
-    rhsDk <- liftTCM $ translateTerm t''
-    Right dkName <- liftTCM $ qName2DkName n
+    case t of
+      Just t -> do -- we get a translation
+        let t' = teleLam tel t
+        reportSDoc "toDk.elimPattMatch" 20 $ AP.prettyTCM t'
+    --    _ <- liftTCM $ infer t'        
+        reportSDoc "toDk.elimPattMatch" 20 $ AP.prettyTCM ty
+        liftTCM $ checkInternal t' CmpEq ty
+        -- END --
 
-    return $ [DkRule
-      { decoding  = False
-      , context   = []
-      , headsymb  = dkName
-      , patts     = []
-      , rhs       = rhsDk
-      }]
-{-
+        t'' <- liftTCM $ reconstructParameters' defaultAction ty t'
+        rhsDk <- liftTCM $ translateTerm t''
+        Right dkName <- liftTCM $ qName2DkName n
 
-    -- if this is an alias function, it does not go through the covering checker,
-    -- the only way to know if this is the case is to check if funCovering is empty
-    -- and funClauses is not
-    let getFunCovering = 
-          if (length (funCovering funDef) == 0 && length (funClauses funDef) /= 0)
-          then funClauses funDef 
-          else funCovering funDef
-                           
-    
-    -- gets the clauses to be translated
-    clauses <- case funProjection funDef of
-        Nothing -> do
-        -- not a projection, we get the clauses after the covering checker          
-          reportSDoc "toDk.clause" 20 $
-            (text " taking clauses from funCovering : " <+>) <$>
-            (return $ pretty $ getFunCovering )            
-          return $ getFunCovering  
-        Just proj  -> case projProper proj of
-        -- this function is projection-like, but is it a real projection
-        -- from a record?
-          Nothing -> do
-        -- not a record projection, we get clauses from funCovering
-            reportSDoc "toDk.clause" 20 $
-              (text " taking clauses from funCovering : " <+>) <$>
-              (return $ pretty $ getFunCovering )            
-            return $ getFunCovering
-          Just _ -> do
-        -- record projection, we take funClauses because projections don't go
-        -- throught the covering checker          
-            reportSDoc "toDk.clause" 20 $
-              (text " taking clauses from funClauses : " <+>) <$>
-              (return $ pretty $ funClauses funDef )
-            return $ funClauses funDef
+        return $ [DkRule
+          { decoding  = False
+          , context   = []
+          , headsymb  = dkName
+          , patts     = []
+          , rhs       = rhsDk
+          }]
+      Nothing -> do -- no translation, we translate the clauses and ignore the translation
 
-    l  <- liftTCM $ mapM (clause2rule n) clauses
-    return $ catMaybes l
+        -- if this is an alias function, it does not go through the covering checker,
+        -- the only way to know if this is the case is to check if funCovering is empty
+        -- and funClauses is not
+        let getFunCovering = 
+              if (length (funCovering funDef) == 0 && length (funClauses funDef) /= 0)
+              then funClauses funDef 
+              else funCovering funDef
 
--}
+        -- gets the clauses to be translated
+        clauses <- case funProjection funDef of
+            Nothing -> do
+            -- not a projection, we get the clauses after the covering checker          
+              reportSDoc "toDk.clause" 20 $
+                (text " taking clauses from funCovering : " <+>) <$>
+                (return $ pretty $ getFunCovering )            
+              return $ getFunCovering  
+            Just proj  -> case projProper proj of
+            -- this function is projection-like, but is it a real projection
+            -- from a record?
+              Nothing -> do
+            -- not a record projection, we get clauses from funCovering
+                reportSDoc "toDk.clause" 20 $
+                  (text " taking clauses from funCovering : " <+>) <$>
+                  (return $ pretty $ getFunCovering )            
+                return $ getFunCovering
+              Just _ -> do
+            -- record projection, we take funClauses because projections don't go
+            -- throught the covering checker          
+                reportSDoc "toDk.clause" 20 $
+                  (text " taking clauses from funClauses : " <+>) <$>
+                  (return $ pretty $ funClauses funDef )
+                return $ funClauses funDef
+
+        l  <- liftTCM $ mapM (clause2rule n) clauses
+        return $ catMaybes l
 
 
 extractRules n (Datatype {dataCons=cons, dataClause=dataClauses, dataPars=i, dataIxs=j}) ty=

@@ -34,6 +34,13 @@ zero + y = y
 (suc x) + y = suc (x + y)
 
 
+cong : {A B : Set} -> {a a' : A} -> (f : A -> B) -> a ≡ a' -> f a ≡ f a'
+cong _ refl = refl
+
++-assoc : (n m k : Nat) -> n + (m + k) ≡ (n + m) + k
++-assoc zero _ _ = refl
++-assoc (suc n) m k = cong suc (+-assoc n m k)
+
 
 {-
 test : ∀ {A B a} -> A -> (x : Test A B a) -> x ≡ x -> Nat -> (y : Test A B a) -> x ≡ y -> a ≡ a -> Nat

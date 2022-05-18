@@ -27,6 +27,7 @@ dependencies:
 - mtl
 - directory
 - deepseq
+- transformers
 - regex-tdfa
 - containers
 
