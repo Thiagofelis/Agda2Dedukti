@@ -109,7 +109,7 @@ data DkOptions = DkOptions
   , optDkDir     :: Maybe String
   , optDkRegen   :: Bool
   , optDkModeLp  :: Bool
-  , optDkEtaMode :: Bool
+  , optDkElimPattMatch :: Bool
   } deriving Generic
 
 instance NFData DkOptions
@@ -122,7 +122,7 @@ defaultDkOptions = DkOptions
   , optDkDir     = Nothing
   , optDkRegen   = False
   , optDkModeLp  = False
-  , optDkEtaMode = False
+  , optDkElimPattMatch = False
   }
 
 
@@ -139,19 +139,14 @@ dkCommandLineFlags =
     , Option [] ["outDir"]  (OptArg outp "DIR")   "output DIR"
     , Option [] ["regen"]   (NoArg forceRegenDk)  "regenerate the Dedukti file even if it already exists"
     , Option [] ["lp"]      (NoArg setLpModeOn)   "change to lp mode"
-    , Option [] ["etaMode"] (NoArg setEtaModeOn)  "enables eta expansion and annotations"    
+    , Option [] ["elimPattMatch"] (NoArg setElimPattMatch)  "enables compilation of pattern matching"
     ]
   where
     compileDkFlag o = return $ o { optDkCompile = True}
     outp d o        = return $ o { optDkDir = d}
     forceRegenDk o  = return $ o { optDkRegen = True}
     setLpModeOn o   = return $ o { optDkModeLp = True}
-    setEtaModeOn o  = return $ o { optDkEtaMode = True}
-
-type EtaMode = Bool
-
--- testFun :: (MonadTCM m, MonadState DkState m) => () -> m ()
--- testFun () = do return ()
+    setElimPattMatch o  = return $ o { optDkElimPattMatch = True}
 
 ------------------------------------------------------------------------------
 --- Module compilation ---
@@ -215,9 +210,7 @@ addRequires opts s =
                 getAllTextMatches (s =~moduleRegex) :: [String] in
   let filteredmods = filter (\s -> not $ or [s == "Agda", s == "univ"]) allmods in
   let uniquemods = sortUniq filteredmods in
-  let reqBase = if optDkEtaMode opts
-                then "require open AgdaTheory.eta.Base;"
-                else "require open AgdaTheory.noEta.Base;" in
+  let reqBase = "require open AgdaTheory.noEta.Base;" in
   let reqList = ([reqBase, "require open AgdaTheory.Levels;", ""] ++) $
                 map (\s -> "require tests." ++ s ++ " as " ++ s ++ ";") uniquemods in
   let requires = intercalate "\n" reqList in
@@ -276,13 +269,17 @@ translateDef dkOpts def@(Defn {defCopy=isCopy, defName=n, theDef=d, defType=t, d
       case d of
         Datatype{dataIxs = numIndices, dataCons = consNames} -> do
           compiledCase <-
-            if numIndices /= 0 then return []
-            else do
+            if numIndices == 0 && optDkElimPattMatch dkOpts then do
               theCase <- mkCase n
               translateDef dkOpts theCase{defMutual=MutId m} -- change the mutual id, to print in order
+            else
+              return []
           consDefs <- mapM getConstInfo consNames
           consTranslated <- concat <$> mapM (translateDef dkOpts) consDefs
           return $ consTranslated ++ compiledCase
+        Record{recConHead = ConHead{conName = consName}} -> do
+          consDef <- getConstInfo consName
+          translateDef dkOpts consDef
         _ -> return []
 
     inTopContext $ do -- why in top context ?
@@ -296,7 +293,7 @@ translateDef dkOpts def@(Defn {defCopy=isCopy, defName=n, theDef=d, defType=t, d
       reportSDoc "toDk" 15 $ return $ text "Getting staticity"
       stat       <- liftTCM $ extractStaticity n d
       reportSDoc "toDk" 15 $ return $ text "Getting rules of " <+> pretty d
-      rules      <- extractRules n d t
+      rules      <- extractRules dkOpts n d t
 
       let dkDef = DkDefinition
             { name      = name
@@ -330,15 +327,17 @@ extractStaticity _ (AbstractDefn {})    = return Static
 
 
   
-extractRules :: DkMonad m => QName -> Defn -> Type -> m [DkRule]
-extractRules n (funDef@Function {}) ty =
+extractRules :: DkMonad m => DkOptions -> QName -> Defn -> Type -> m [DkRule]
+extractRules dkOpts n (funDef@Function {}) ty =
   do
 
     let Just compiledClauses = funCompiled funDef
     reportSDoc "toDk.elimPattMatch" 20 $ return $ pretty compiledClauses    
 
     TelV{ theTel = tel, theCore = returnTy} <- telView ty
-    t <- runMaybeT $ compiledClausesToCase tel returnTy compiledClauses
+    t <- if optDkElimPattMatch dkOpts then
+           runMaybeT $ compiledClausesToCase tel returnTy compiledClauses
+         else return Nothing
 
     case t of
       Just t -> do -- we get a translation
@@ -399,7 +398,7 @@ extractRules n (funDef@Function {}) ty =
         return $ catMaybes l
 
 
-extractRules n (Datatype {dataCons=cons, dataClause=dataClauses, dataPars=i, dataIxs=j}) ty=
+extractRules _ n (Datatype {dataCons=cons, dataClause=dataClauses, dataPars=i, dataIxs=j}) ty=
   do
 
     -- TEST mkCaseMethod
@@ -418,18 +417,18 @@ extractRules n (Datatype {dataCons=cons, dataClause=dataClauses, dataPars=i, dat
            Just c  -> liftTCM $ sequence [clause2rule n c, Just <$> decodedVersion n (i+j)]
            Nothing -> liftTCM $ sequence [Just <$> decodedVersion n (i+j)]
     return $ catMaybes l
-extractRules n (t@Record {recClause=clauses, recPars=i, recConHead=hd, recFields=f}) ty =
+extractRules _ n (t@Record {recClause=clauses, recPars=i, recConHead=hd, recFields=f}) ty =
   do
     translatedClauses <- liftTCM $ maybe (return []) (\c -> sequence [clause2rule n c]) clauses
     decodedVers <- liftTCM $ sequence [Just <$> decodedVersion n i]
     return $ catMaybes $ translatedClauses ++ decodedVers
     
-extractRules n (Primitive {primClauses=p}) ty =
+extractRules _ n (Primitive {primClauses=p}) ty =
   do
     recordCleaned <- liftTCM $ mapM translateRecordPatterns p
     l <- liftTCM $ mapM (clause2rule n) recordCleaned
     return $ catMaybes l
-extractRules _ _ _                            = sequence []
+extractRules _ _ _ _                            = sequence []
 
 decodedVersion :: QName -> Int -> TCM DkRule
 decodedVersion nam i = do
