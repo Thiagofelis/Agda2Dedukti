@@ -10,11 +10,11 @@ theory-objects:
 
 # all tests
 test: theory-objects 
-	cd tests && bash test.sh "1 3"
+	cd tests && bash test.sh "1 3 5"
 
 # all tests, in verbose mode
 test-verbose: theory-objects
-	cd tests && bash test.sh "1 3" -v
+	cd tests && bash test.sh "1 3 5" -v
 
 # only dk tests
 test-dk: theory-objects
@@ -23,6 +23,10 @@ test-dk: theory-objects
 # only lp tests
 test-lp: theory-objects
 	cd tests && bash test.sh "3"
+
+test-elimPattMatch: theory-objects
+	cd tests && bash test.sh "5"
+
 
 # NB ?= -1
 # TIMEOUT ?=0

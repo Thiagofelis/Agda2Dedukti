@@ -3,7 +3,10 @@
 # 2: --dk --eta
 # 3: --dk --lp
 # 4: --dk --lp --eta
+# 5: --dk --elimPattMatch
 
+elimPattTest 5
+elimPattTest2 5
 coindMus
 coindMusFormLang
 musical-Stream

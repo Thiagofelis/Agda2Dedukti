@@ -7,18 +7,20 @@ else
     verbose=0
 fi
 
+return=0
 codes=$(echo "$1")
 test_files=$(find files -name "*.agda" | sort)
 
 # cleans previous agdai, dk, dko, lp, lpo files
-rm -f files/*.agdai output/dk/eta/*.dk* output/dk/no-eta/*.dk* output/lp/eta/*.lp* output/lp/no-eta/*.lp*
+rm -f files/*.agdai output/dk/eta/*.dk* output/dk/no-eta/*.dk* output/lp/eta/*.lp* output/lp/no-eta/*.lp* output/dk/elimPattMatch/*.dk*
 
 code_to_option () {
 	echo "$1" \
 	| sed -e "s/1/--dk/g" \
 	| sed -e "s/2/--dk --eta/g" \
 	| sed -e "s/3/--dk --lp/g" \
-	| sed -e "s/4/--dk --lp --eta/g"
+	| sed -e "s/4/--dk --lp --eta/g" \
+	| sed -e "s/5/--dk --elimPattMatch/g"	      
 }
 
 code_to_option_name () {
@@ -26,31 +28,36 @@ code_to_option_name () {
 	| sed -e "s/1/dk-no-eta/g" \
 	| sed -e "s/2/dk-eta/g" \
 	| sed -e "s/3/lp-no-eta/g" \
-	| sed -e "s/4/lp-eta/g"
+	| sed -e "s/4/lp-eta/g" \
+	| sed -e "s/5/dk-elimPattMatch/g"	      
 }
 
 code_to_output_dir () {
-	if [ "$1" == "1" ]; then
-		echo "output/dk/no-eta/"
-	elif [ "$1" == "2" ]; then
-		echo "output/dk/eta/"
-	elif [ "$1" == "3" ]; then
-		echo "output/lp/no-eta/"
-	elif [ "$1" == "4" ]; then
-		echo "output/lp/eta/"
-	fi
+    if [ "$1" == "1" ]; then
+	echo "output/dk/no-eta/"
+    elif [ "$1" == "2" ]; then
+	echo "output/dk/eta/"
+    elif [ "$1" == "3" ]; then
+	echo "output/lp/no-eta/"
+    elif [ "$1" == "4" ]; then
+	echo "output/lp/eta/"
+    elif [ "$1" == "5" ]; then
+	echo "output/dk/elimPattMatch/"
+    fi
 }
 
 code_to_typecheck_dir () {
-	if [ "$1" == "1" ]; then
-		echo "output/dk/no-eta"
-	elif [ "$1" == "2" ]; then
-		echo "output/dk/eta"
-	elif [ "$1" == "3" ]; then
-		echo "output/lp/no-eta"
-	elif [ "$1" == "4" ]; then
-		echo "output/lp/eta"
-	fi
+    if [ "$1" == "1" ]; then
+	echo "output/dk/no-eta"
+    elif [ "$1" == "2" ]; then
+	echo "output/dk/eta"
+    elif [ "$1" == "3" ]; then
+	echo "output/lp/no-eta"
+    elif [ "$1" == "4" ]; then
+	echo "output/lp/eta"
+    elif [ "$1" == "5" ]; then
+	echo "output/dk/elimPattMatch"	
+    fi
 }
 
 
@@ -86,6 +93,7 @@ for file in $test_files ; do
 	    echo -e "\033[0;31m1) Translation failed with error:\033[0m"
 	    echo -e "stack exec -- Agda2Dedukti-exe $option --outDir=\"../$(code_to_output_dir $option_code)\" $(basename $file)"
 	    echo "$output"
+	    return=1
 	    continue
 	fi
 	# typechecking phase	
@@ -103,7 +111,10 @@ for file in $test_files ; do
 	else
 	    echo -e "\033[0;31m2) Typechecking failed with error:\033[0m"
 	    echo "$output"
+	    return=1
 	    continue
 	fi
     done
 done
+
+exit $return
