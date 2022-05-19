@@ -6,6 +6,7 @@ import Text.PrettyPrint
 
 import Agda.Utils.Pretty (pretty)
 import Agda.Syntax.Internal
+import Agda.Syntax.Position
 import Agda.TypeChecking.Substitute
 import qualified Agda.TypeChecking.Pretty as AP
 import Agda.TypeChecking.Telescope
@@ -22,13 +23,23 @@ import Agda.Syntax.Common
 import Agda.Utils.Size
 import qualified Agda.Syntax.Concrete.Name as CN
 import Agda.Utils.Impossible
+
 import Data.List.NonEmpty (fromList, toList)
+import Data.List (elemIndex)
+import qualified Data.Set
 
 import Control.Monad.State
 import Control.Monad.Trans.Maybe
 import Control.Monad
 
 import DkMonad
+
+defaultConHead consName = ConHead{conName = consName,
+                                  conDataRecord = IsData,
+                                  conInductive = Inductive,
+                                  conFields = []}
+
+defaultConInfo = ConOCon
 
 genList 0 = []
 genList n = (n - 1) : (genList (n - 1))
@@ -123,20 +134,54 @@ mkCaseType qname pars cons =
 
     return caseType
 
-{-
-mkCaseClause :: DkMonad m => QName -> QName -> Type -> QName -> m Clause
-mkCaseClause dname caseName caseTy consName =
+
+mkCaseClause :: DkMonad m => QName -> Type -> QName -> m Clause
+mkCaseClause dname caseTy consName =
   do
-    TelV{theTel = tel, theCore = clauseTy} <- telView dType
+    TelV{theTel = tel, theCore = clauseTy} <- telView caseTy
+    
+    Datatype{dataCons = cons, dataPars = numPars} <- theDef <$> getConstInfo dname
+    let Just consIndex = elemIndex consName cons
 
-    cons <- getConstInfo consName
-    numConsArgs <- numConsArgs <$> removeParams <$> theTel <$> telView $ defType $ cons
-
-    instantiateWithConstructor tel dname pars EmptyTel returnTy consName
--}
+    -- we calculate the index od m_cons in
+    -- i : Lvl, pars : Pars, P : D pars -> Set i, m_0 .. m_k-1, x : D
+    let consMethodIndex = (length cons) - consIndex
 
 
+    -- splits the telescope tel as Gamma, x : D pars
+    let (gamma, ExtendTel Dom{unDom = El{unEl = Def _ pars}} Abs{unAbs = EmptyTel}) =
+          splitTelescopeAt ((length tel) - 1) tel
 
+    -- we have Gamma, a : Phi, Empty |- caseTy{c a/x}
+    (_, consTel, _, clauseTy') <- instantiateWithConstructor gamma dname pars EmptyTel clauseTy consName
+    
+    let clauseTel = gamma `abstract` consTel
+
+    let body = Var (consMethodIndex + (length consTel) - 1) $ genElim $ length consTel
+
+    let genPattsFromInts l =
+          map (\x -> defaultNamedArg $ varP DBPatVar{dbPatVarName = "x", dbPatVarIndex = x}) l
+
+    let patts =
+          (genPattsFromInts $ reverse $ map ((+) $ length consTel) [0 .. ((length gamma) - 1)])
+          ++ [defaultNamedArg $ ConP (defaultConHead consName) noConPatternInfo $
+               genPattsFromInts $ reverse [0 .. ((length consTel) - 1)]]
+
+    let clause =
+          Clause{ clauseLHSRange = NoRange
+                , clauseFullRange = NoRange
+                , clauseTel = clauseTel
+                , namedClausePats = patts
+                , clauseBody = Just body
+                , clauseType = Just $ defaultArg clauseTy'
+                , clauseCatchall = False
+                , clauseExact = Nothing
+                , clauseRecursive = Nothing
+                , clauseUnreachable = Nothing
+                , clauseEllipsis = NoEllipsis }
+    reportSDoc "toDk.elimPattMatch" 20 $ AP.prettyTCM $ clause
+    return clause
+    
 -- given dataype name D, generates the type of case_D
 mkCase :: DkMonad m => QName -> m Definition
 mkCase qname =
@@ -145,9 +190,29 @@ mkCase qname =
     dType <- defType <$> getConstInfo qname
     pars <- theTel <$> telView dType
 
+    -- builds the type of the case
     caseType <- mkCaseType qname pars cons
-    -- we have finished building the type of case, now we add it to the signature
 
+    -- builds the clauses describing the computational behavior of the case
+    clauses <- mapM (\consname -> mkCaseClause qname caseType consname) cons
+
+    let theDef =
+          Function{ funClauses = clauses
+                  , funCompiled = Nothing
+                  , funSplitTree = Nothing
+                  , funTreeless = Nothing
+                  , funCovering = clauses -- should we do this?
+                  , funInv = NotInjective
+                  , funMutual = Nothing
+                  , funAbstr = ConcreteDef
+                  , funDelayed = NotDelayed
+                  , funProjection = Nothing
+                  , funFlags = Data.Set.empty
+                  , funTerminates = Nothing
+                  , funExtLam = Nothing
+                  , funWith = Nothing }
+
+    -- generates the name of the case
     let dataTypeNameString = concat $
                              map (\x -> case x of
                                           CN.Hole -> "_"
@@ -156,11 +221,13 @@ mkCase qname =
     caseName <- liftTCM $ freshName_ $ "case" ++ dataTypeNameString
     let caseQName = QName{qnameModule = qnameModule qname, qnameName = caseName}
 
-    let theCase = defaultDefn defaultArgInfo caseQName caseType WithoutK Axiom{axiomConstTransp=False}
-    
-    liftTCM $ addConstant caseQName $ theCase
-      
+    -- the final definition
+    let theCase = defaultDefn defaultArgInfo caseQName caseType WithoutK theDef
 
+    -- adds the definition to the tcm
+    liftTCM $ addConstant caseQName $ theCase
+
+    -- stores in dkstate that the case name of datatype qname is caseQName
     dkState@DkState{caseOfData = caseOfData} <- get
     put $ dkState{caseOfData = (\x -> if x == qname then Just caseQName else caseOfData x)}
     return theCase

@@ -328,6 +328,49 @@ extractStaticity _ (AbstractDefn {})    = return Static
 
   
 extractRules :: DkMonad m => DkOptions -> QName -> Defn -> Type -> m [DkRule]
+
+-- TODO integrate the cases funCompiled = Nothing and funCompiled = Just x
+-- in the same definition
+extractRules dkOpts n (funDef@Function {funCompiled = Nothing}) ty =
+  do
+    
+    -- if this is an alias function, it does not go through the covering checker,
+    -- the only way to know if this is the case is to check if funCovering is empty
+    -- and funClauses is not
+    let getFunCovering = 
+          if (length (funCovering funDef) == 0 && length (funClauses funDef) /= 0)
+          then funClauses funDef 
+          else funCovering funDef
+
+    -- gets the clauses to be translated
+    clauses <- case funProjection funDef of
+        Nothing -> do
+        -- not a projection, we get the clauses after the covering checker          
+          reportSDoc "toDk.clause" 20 $
+            (text " taking clauses from funCovering : " <+>) <$>
+            (return $ pretty $ getFunCovering )            
+          return $ getFunCovering  
+        Just proj  -> case projProper proj of
+        -- this function is projection-like, but is it a real projection
+        -- from a record?
+          Nothing -> do
+        -- not a record projection, we get clauses from funCovering
+            reportSDoc "toDk.clause" 20 $
+              (text " taking clauses from funCovering : " <+>) <$>
+              (return $ pretty $ getFunCovering )            
+            return $ getFunCovering
+          Just _ -> do
+        -- record projection, we take funClauses because projections don't go
+        -- throught the covering checker          
+            reportSDoc "toDk.clause" 20 $
+              (text " taking clauses from funClauses : " <+>) <$>
+              (return $ pretty $ funClauses funDef )
+            return $ funClauses funDef
+
+    l  <- liftTCM $ mapM (clause2rule n) clauses
+    return $ catMaybes l
+    
+    
 extractRules dkOpts n (funDef@Function {}) ty =
   do
 

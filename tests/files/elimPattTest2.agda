@@ -38,11 +38,11 @@ zero + y = y
 cong : {A B : Set} -> {a a' : A} -> (f : A -> B) -> a ≡ a' -> f a ≡ f a'
 cong _ refl = refl
 
-{-
+
 +-assoc : (n m k : Nat) -> n + (m + k) ≡ (n + m) + k
 +-assoc zero _ _ = refl
 +-assoc (suc n) m k = cong suc (+-assoc n m k)
-
+{-
 data _×_ (A B : Set) : Set where
   mkProd : A -> B -> A × B
 
