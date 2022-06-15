@@ -413,6 +413,14 @@ compiledClausesToCase tel returnTy tree@(Case n bs) =
     return $ Def caseName finalElim
 
 {-
+getRecursiveIndex :: DkMonad m => [Clause] -> MaybeT m Int
+getRecursiveIndex clauses =
+  do
+    let lhs = map (patternToTerm . namedArg) clauses
+    TODO
+  -}
+
+{-
 compiledClausesToCase tel returnTy tree@(Case n bs) =
   do
 --    reportSDoc "toDk.elimPattMatch" 20 $ return $ text $ show (unArg n)
