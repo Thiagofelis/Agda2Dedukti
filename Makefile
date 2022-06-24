@@ -5,7 +5,7 @@ compile:
 
 theory-objects:
 #	cd theory/dk/eta && rm -f *.dko ; dkcheck -e univ.dk && dkcheck -e Agda.dk
-	cd theory/dk/noEta && rm -f *.dko ; dkcheck -e univ.dk && dkcheck -e Agda.dk
+	cd theory/dk/noEta && rm -f *.dko ; dkcheck -e nat.dk && dkcheck -e univ.dk && dkcheck -e Agda.dk
 	cd theory/lp/AgdaTheory && make clean && make install
 
 # all tests

@@ -1,0 +1,13 @@
+Nat : Type.
+
+0 : Nat.
+s : Nat -> Nat.
+
+def max : Nat -> Nat -> Nat.
+[y]   max 0     y       --> y.
+[x]   max x       0     --> x.
+[x,y] max (s x) (s y) --> s (max x y).
+
+def plus : Nat -> Nat -> Nat.
+[y]   plus 0     y --> y.
+[x,y] plus (s x) y --> s (plus x y).
