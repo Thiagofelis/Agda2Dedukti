@@ -833,8 +833,8 @@ substi l (DkSort s)               =
   DkSort (substiSort l s)
 substi l (DkProd s1 s2 x a b)     =
   DkProd (substiSort l s1) (substiSort l s2) x (substi l a) (substi l b)
-substi l (DkProjProd s1 s2 x a b) =
-  DkProjProd (substiSort l s1) (substiSort l s2) x (substi l a) (substi l b)
+{-substi l (DkProjProd s1 s2 x a b) =
+  DkProjProd (substiSort l s1) (substiSort l s2) x (substi l a) (substi l b)-}
 substi l (DkQuantifLevel s x a)   =
   DkQuantifLevel (substiSort l s) x (substi l a)
 substi _ t@(DkConst _)            = t

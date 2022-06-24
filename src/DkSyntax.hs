@@ -220,7 +220,7 @@ data DkTerm =
   -- Product: Pi @3 : El @1 @4. El @2 @5
   | DkProd DkSort DkSort DkIdent DkTerm DkTerm
   -- Product: Pi @3 : El @1 @4. El @2 @5
-  | DkProjProd DkSort DkSort DkIdent DkTerm DkTerm
+{-  | DkProjProd DkSort DkSort DkIdent DkTerm DkTerm -}
   -- Lvl quantification: Forall (\@2. @1) (\@2. @3)
   | DkQuantifLevel DkSort DkIdent DkTerm
   -- name of constant
@@ -249,7 +249,7 @@ printTerm pos mods dkMode boundCtx (DkProd domSort coDomSort varName domTy coDom
   let coDom       = parens (pAbs dkMode (printIdent dkMode boundCtx varName) Nothing
                             <+> trCoDomTy) in
   paren pos $ pPi dkMode <+> trDomSort <+> trCoDomSort <+> trDomTy <+> coDom
-printTerm pos mods dkMode boundCtx
+{-printTerm pos mods dkMode boundCtx
   (DkProjProd domSort coDomSort varName domTy coDomTy) =
   let trDomSort   = printSort Nested mods dkMode boundCtx domSort in    
   let trCoDomSort = printSort Nested mods dkMode boundCtx coDomSort in
@@ -258,7 +258,7 @@ printTerm pos mods dkMode boundCtx
   let coDom       = parens (pAbs dkMode (printIdent dkMode boundCtx varName) Nothing <+>
                             trCoDomTy) in
   paren pos $ pProjPi dkMode <+> trDomSort <+> trCoDomSort <+> trDomTy <+> coDom
-
+-}
 printTerm pos mods dkMode boundCtx (DkQuantifLevel sort varName coDom)   =
   let trSort     = printSort Top mods dkMode boundCtx sort in
   let trCoDom    = printTerm Top mods dkMode boundCtx coDom in    
@@ -479,23 +479,23 @@ toDkDocs mods dkMode def =
 ------- Printing funcitons -------
 
 pEl :: DkMode -> Doc
-pEl DkMode = text "Agda.Term"
+pEl DkMode = text "Agda.El"
 pEl LpMode = text "El"
 
 pCode :: DkMode -> Doc
-pCode DkMode = text "Agda.code"
+pCode DkMode = text "Agda.u"
 pCode LpMode = text "⋄"
 
 pPi :: DkMode -> Doc
 pPi DkMode = text "Agda.prod"
 pPi LpMode = text "⇝"
 
-pProjPi :: DkMode -> Doc
+{- pProjPi :: DkMode -> Doc
 pProjPi DkMode = text "Agda.proj_prod"
-pProjPi LpMode = text "⇝proj"
+pProjPi LpMode = text "⇝proj" -}
 
 pForall :: DkMode -> Doc
-pForall DkMode = text "Agda.qLevel"
+pForall DkMode = text "Agda.forall"
 pForall LpMode = text "∀"
 
 pAxiom :: DkMode -> Doc
@@ -557,7 +557,7 @@ pProp DkMode = text "Agda.prop"
 pProp LpMode = text "prop"
 
 pOmega :: DkMode -> Doc
-pOmega DkMode = text "Agda.sortOmega"
+pOmega DkMode = text "Agda.setOmega"
 pOmega LpMode = text "setω"
 
 pSymb :: DkMode -> Doc

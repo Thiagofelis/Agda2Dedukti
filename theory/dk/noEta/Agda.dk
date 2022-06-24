@@ -4,13 +4,13 @@ Sort : Type.
 
 set  : univ.Lvl -> Sort.
 prop : univ.Lvl -> Sort.
-sortOmega : Sort.
-sizeUniv : Sort.
+setOmega : Sort.
 
 (; Universe successors ;)
 def axiom : Sort -> Sort.
 [i] axiom (set i)  --> set (univ.s i).
 [i] axiom (prop i) --> set (univ.s i).
+[]  axiom setOmega --> setOmega.
 
 (; Universe product rules ;)
 def rule : Sort -> Sort -> Sort.
@@ -18,34 +18,25 @@ def rule : Sort -> Sort -> Sort.
 [i, j] rule (set i)  (prop j)  --> prop (univ.max i j).
 [i, j] rule (prop i) (set j)   --> set  (univ.max i j).
 [i, j] rule (prop i) (prop j)  --> prop (univ.max i j).
-[]     rule _        sortOmega --> sortOmega.
-
-[]    rule _        sizeUniv  --> sizeUniv.
-[s]   rule sizeUniv s         --> s.
-
+[]     rule _        setOmega  --> setOmega.
+[]     rule setOmega  _        --> setOmega.
 
 
 (; Types and terms ;)
+U : (s : Sort) -> Type.
+def El : (s : Sort) -> (a : U s) -> Type.
 
-Univ : s : Sort -> Type.
+u : (s : Sort) -> U (axiom s).
+[s] El _ (u s) --> U s.
 
-def Term : s : Sort -> a : Univ s -> Type.
+prod : (s1 : Sort) -> (s2 : Sort) -> (A : U s1) -> (B : (El s1 A -> U s2)) -> U (rule s1 s2).
+[a, b, A, B] El _ (prod a b A B) --> x : El a A -> El b (B x).
 
-size : Univ sizeUniv.
+forall : (l : (univ.Lvl -> Sort)) -> (i : univ.Lvl -> U (l i)) -> U setOmega.
+[l, t] El _ (forall l t) --> i : univ.Lvl -> El (l i) (t i).
 
 
-code : s : Sort -> Univ (axiom s).
-prod : s1 : Sort -> s2 : Sort -> A : Univ s1 -> B : (Term s1 A -> Univ s2) -> Univ (rule s1 s2).
-proj_prod : s1 : Sort -> s2 : Sort -> A : Univ s1 -> B : (Term s1 A -> Univ s2) -> Univ (rule s1 s2).
 
-qLevel : f: (univ.Lvl -> Sort) -> (l : univ.Lvl -> Univ (f l)) -> Univ sortOmega.
 
-[s] Term _ (code s) --> Univ s.
-[f, t] Term _ (qLevel f t) --> l : univ.Lvl -> Term (f l) (t l).
 
-[a, b, A, B] Term _ (prod (set a) b A B) --> x : Term (set a) A -> Term b (B x).
-[a, b, A, B] Term _ (prod (prop a) b A B) --> x : Term (prop a) A -> Term b (B x).
-[a, b, A, B] Term _ (proj_prod a  b A B) --> x : Term a A -> Term b (B x).
-
-[b, B, t]       Term _ (prod sizeUniv b t B) --> x : Term sizeUniv t -> Term b (B x).
 
