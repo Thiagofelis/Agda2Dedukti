@@ -14,13 +14,14 @@ test_files=$(find files -name "*.agda" | sort)
 # cleans previous agdai, dk, dko, lp, lpo files
 rm -f files/*.agdai output/dk/eta/*.dk* output/dk/no-eta/*.dk* output/lp/eta/*.lp* output/lp/no-eta/*.lp* output/dk/elimPattMatch/*.dk*
 
+# TODO: correct the problems that force use ignore-interfaces when eliminating pattmatch
 code_to_option () {
 	echo "$1" \
 	| sed -e "s/1/--dk/g" \
 	| sed -e "s/2/--dk --eta/g" \
 	| sed -e "s/3/--dk --lp/g" \
 	| sed -e "s/4/--dk --lp --eta/g" \
-	| sed -e "s/5/--dk --elimPattMatch/g"	      
+	| sed -e "s/5/--dk --elimPattMatch/g"
 }
 
 code_to_option_name () {

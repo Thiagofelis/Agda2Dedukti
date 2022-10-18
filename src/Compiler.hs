@@ -74,7 +74,9 @@ dkBackend' = Backend.Backend'
   , Backend.isEnabled             = optDkCompile
       -- ^ Flag which enables the Dedukti Backend
   , Backend.preCompile            = \opts -> do
-      ref <- liftIO $ newIORef DkState{ caseOfData = (\_ -> Nothing) }
+      ref <- liftIO $
+        newIORef DkState{ caseOfData = (\_ -> Nothing),
+                          belowOfData = (\_ -> Nothing)}
       return (opts, ref)
       -- ^ Called after type checking completes, but before compilation starts.  
   , Backend.postCompile           = \_ _ _ -> return ()
@@ -271,7 +273,10 @@ translateDef dkOpts def@(Defn {defCopy=isCopy, defName=n, theDef=d, defType=t, d
           compiledCase <-
             if numIndices == 0 && optDkElimPattMatch dkOpts then do
               theCase <- mkCase n
-              translateDef dkOpts theCase{defMutual=MutId m} -- change the mutual id, to print in order
+              theBelow <- mkBelow n
+              translatedCase <- translateDef dkOpts theCase{defMutual=MutId m} -- change the mutual id, to print in order
+              translatedBelow <- translateDef dkOpts theBelow{defMutual=MutId m}
+              return $ translatedCase ++ translatedBelow
             else
               return []
           consDefs <- mapM getConstInfo consNames

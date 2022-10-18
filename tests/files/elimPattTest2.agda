@@ -1,4 +1,5 @@
 open import Agda.Builtin.Equality
+open import elimPattPrelude
 open import Agda.Builtin.Unit
 
 data Nat : Set where
@@ -12,6 +13,9 @@ data Test (A B : Set) (a : A) : Set where
   e : (f : (a' : A) -> a ≡ a' -> Test A B a) -> Test A B a
 
 
+data Test2 (A B : Set) (a : A) : Set where
+  kc : (A -> Test2 A B a) -> (m n : Nat) -> A -> (n ≡ m -> Test2 A B a) -> Test2 A B a
+
 test : ∀ {A B a} -> A -> (x : Test A B a) -> x ≡ x -> Nat -> (y : Test A B a) -> x ≡ y -> a ≡ a -> x ≡ x
 test _ (c m _ _ l) _ _ _ _ p = refl
 test _ _ _ _ (c m _ _ l) _ p = refl
@@ -23,6 +27,12 @@ someIsZero (suc x) y z = suc x
 someIsZero zero (suc y) z = suc y
 someIsZero zero zero (suc z) = suc z
 someIsZero zero zero zero = zero
+
+jesper : Nat -> Nat
+jesper zero = suc zero
+jesper (suc zero) = zero
+jesper (suc (suc _)) = suc zero
+
 
 test2 : ∀ {A B a} -> A -> (x : Test A B a) -> x ≡ x -> Nat -> (y : Test A B a) -> x ≡ y -> a ≡ a -> x ≡ x
 test2 _ (c m _ _ _) _ _ _ _ _ = refl

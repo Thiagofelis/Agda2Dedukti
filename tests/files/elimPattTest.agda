@@ -1,4 +1,5 @@
 open import Agda.Builtin.Equality
+open import elimPattPrelude
 open import Agda.Builtin.Nat
 
 data Test (A B : Set) (a : A) : Set where
