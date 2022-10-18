@@ -42,7 +42,7 @@ jobs:
           opam upgrade
           opam pin add lambdapi https://github.com/Deducteam/lambdapi.git
           opam install lambdapi
-          opam pin add dedukti https://github.com/Deducteam/dedukti.git
+          opam pin add dedukti https://github.com/Deducteam/dedukti.git#c65e7e6
           opam install dedukti
       - name: building agda2dedukti
         run: make compile
