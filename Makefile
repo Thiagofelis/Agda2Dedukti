@@ -1,7 +1,7 @@
 all: compile
 
 compile:
-	stack build
+	stack build --fast
 
 theory-objects:
 #	cd theory/dk/eta && rm -f *.dko ; dkcheck -e univ.dk && dkcheck -e Agda.dk
