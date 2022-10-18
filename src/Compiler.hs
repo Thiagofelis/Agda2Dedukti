@@ -28,10 +28,11 @@ import Text.Regex.TDFA ((=~), getAllTextMatches)
 import Data.List.Unique (sortUniq)
 
 import qualified Agda.Compiler.Backend as Backend
-import Agda.Compiler.Common
+import Agda.Compiler.Common (IsMain, topLevelModuleName)
 import Agda.Interaction.Options
 import qualified Agda.Syntax.Concrete.Name as CN
 import Agda.Syntax.Common
+import Agda.Syntax.TopLevelModuleName
 import Agda.Syntax.Internal
 import Agda.Syntax.Internal.Pattern
 import Agda.Syntax.Literal
@@ -43,7 +44,7 @@ import Agda.TypeChecking.Level
 import Agda.TypeChecking.ReconstructParameters
 import Agda.TypeChecking.RecordPatterns
 import Agda.TypeChecking.Records
-import Agda.TypeChecking.Monad
+import Agda.TypeChecking.Monad hiding (topLevelModuleName)
 import Agda.TypeChecking.Primitive.Base
 import Agda.TypeChecking.Reduce
 import Agda.TypeChecking.Substitute
@@ -154,7 +155,7 @@ dkCommandLineFlags =
 --- Module compilation ---
 ------------------------------------------------------------------------------
 
-dkPreModule :: (DkOptions, IORef DkState) -> IsMain -> ModuleName -> Maybe FilePath ->
+dkPreModule :: (DkOptions, IORef DkState) -> IsMain -> TopLevelModuleName -> Maybe FilePath ->
                TCM (Backend.Recompile () ())
 dkPreModule (opts,_) _ mods _ =
   let path = filePath opts mods in
@@ -167,7 +168,7 @@ dkPreModule (opts,_) _ mods _ =
     else do liftIO $ putStrLn $ "Generation of " ++ path
             return $ Backend.Recompile ()
 
-dkPostModule :: (DkOptions, IORef DkState) -> () -> IsMain -> ModuleName -> [Definition] -> TCM ()
+dkPostModule :: (DkOptions, IORef DkState) -> () -> IsMain -> TopLevelModuleName -> [Definition] -> TCM ()
 dkPostModule (opts, ref) _ _ mods defs =
   do
     let dkMode = case (optDkModeLp opts) of False -> DkMode
@@ -219,7 +220,7 @@ addRequires opts s =
   requires ++ "\n" ++  s
 
 
-filePath :: DkOptions -> ModuleName -> String
+filePath :: DkOptions -> TopLevelModuleName -> String
 filePath opts mods =
   let concMods = modName2DkModIdent mods in
   -- If a directory is not given by the user, we just use the current one.
@@ -945,6 +946,7 @@ translateTerm (Pi d@(Dom {unDom=a}) bb) = do
           El {unEl=Def h []} -> do
             hd <- qName2DkName h
             -- is it Level?
+            reportSDoc "toDk.hi" 3 $ return $ text $ show hd
             if hd == Right (DkQualified ["Agda","Primitive"] [] "Level")
               -- yes! this is a a level quantification
             then return $ DkQuantifLevel kb (name2DkIdent nam) body
@@ -1076,9 +1078,9 @@ qName2DkName qn@QName{qnameModule=mods, qnameName=nam} =
       reportSDoc "toDk2" 3 $ return $ text "tRecons OK"
       return $ Left tRecons
     else
-      let otherMods = stripPrefix (mnameToList topMod) (mnameToList mods) in
+      let otherMods = stripPrefix (modName2DkModIdent topMod) (map name2DkIdent $ mnameToList mods) in
       return $ Right $
-        DkQualified (modName2DkModIdent topMod) (maybe [] (map name2DkIdent) otherMods) (name2DkIdent nam)
+        DkQualified (modName2DkModIdent topMod) (maybe [] id otherMods) (name2DkIdent nam)
 
 name2DkIdent :: Name -> DkIdent
 name2DkIdent (Name {nameId=NameId id _, nameConcrete=CN.Name {CN.nameNameParts=n}}) =
@@ -1094,8 +1096,9 @@ namePart2String :: CN.NamePart -> String
 namePart2String CN.Hole  = "_"
 namePart2String (CN.Id s) = s
 
-modName2DkModIdent :: ModuleName -> DkModName
-modName2DkModIdent (MName {mnameToList=l}) = map name2DkIdent l
+modName2DkModIdent :: TopLevelModuleName -> DkModName
+modName2DkModIdent n =  map Data.Text.unpack $ Data.List.NonEmpty.toList $ moduleNameParts n
+--modName2DkModIdent (MName {mnameToList=l}) = map name2DkIdent l
 
 separateVars :: Context -> Context
 separateVars = separateAux ["_"]

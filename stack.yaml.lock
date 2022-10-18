@@ -5,27 +5,34 @@
 
 packages:
 - completed:
+    commit: aed62b9d482fc11c92a2bd2105e6fee7b4776ae9
+    git: https://github.com/agda/agda.git
     name: Agda
-    version: 2.6.3
-    git: https://github.com/Deducteam/agda.git
     pantry-tree:
-      size: 848490
-      sha256: 72a78b9fe1d96389729044c32d46c6fc892446522ed81b4aa4ca12c40f88d829
-    commit: b026db1fa2fbc4bafeff0d0a997d36ac07a94dc5
+      sha256: 4002d1b711166ec1222e7379caf1131d5b9cbe5c8eace8d8de58c1862d1eec17
+      size: 758141
+    version: 2.6.3
   original:
-    git: https://github.com/Deducteam/agda.git
-    commit: b026db1fa2fbc4bafeff0d0a997d36ac07a94dc5
+    commit: aed62b9d482fc11c92a2bd2105e6fee7b4776ae9
+    git: https://github.com/agda/agda.git
 - completed:
     hackage: Unique-0.4.7.9@sha256:a7e154cf6d05169777a1e54aadab24fb3a6eae3ee167e5e77d7ba96d182436c7,2064
     pantry-tree:
-      size: 1366
       sha256: eb62502b1de8adee91f0feb104a36f87a21a9367f95295d4f12c73183a9b1e54
+      size: 1366
   original:
     hackage: Unique-0.4.7.9@sha256:a7e154cf6d05169777a1e54aadab24fb3a6eae3ee167e5e77d7ba96d182436c7,2064
+- completed:
+    hackage: vector-hashtables-0.1.1.1@sha256:cb4ba4af6b83b6956278bbfe8d0f779a40928728e82977e566c0103fe8d6c867,2725
+    pantry-tree:
+      sha256: 312593e36891e5ee4664e8362551df6111209c5b6b90c6fc44c4517852cbe637
+      size: 848
+  original:
+    hackage: vector-hashtables-0.1.1.1@sha256:cb4ba4af6b83b6956278bbfe8d0f779a40928728e82977e566c0103fe8d6c867,2725
 snapshots:
 - completed:
+    sha256: ce4fb8d44f3c6c6032060a02e0ebb1bd29937c9a70101c1517b92a87d9515160
     size: 586110
     url: https://raw.githubusercontent.com/commercialhaskell/stackage-snapshots/master/lts/18/21.yaml
-    sha256: ce4fb8d44f3c6c6032060a02e0ebb1bd29937c9a70101c1517b92a87d9515160
   original:
     url: https://raw.githubusercontent.com/commercialhaskell/stackage-snapshots/master/lts/18/21.yaml

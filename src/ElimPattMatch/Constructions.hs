@@ -121,7 +121,7 @@ mkEndType dataname numPars =
 mkBelowType :: DkMonad m => QName -> Telescope -> m Type
 mkBelowType qname pars =
   do
-    levelType <- levelType
+    levelType <- liftTCM $ levelType
     -- tel = i : Level, p : Pars
     let tel = ExtendTel (defaultDom levelType) (Abs{absName = "i", unAbs = pars})
 
@@ -143,7 +143,7 @@ mkBelowType qname pars =
 mkCaseType :: DkMonad m => QName -> Telescope -> [QName] -> m Type
 mkCaseType qname pars cons =
   do
-    levelType <- levelType
+    levelType <- liftTCM $ levelType
     -- tel = i : Level, p : Pars
     let tel = ExtendTel (defaultDom levelType) (Abs{absName = "i", unAbs = pars})
 
@@ -335,7 +335,8 @@ mkBelowClause dname belowTy consName =
                 , clauseExact = Nothing
                 , clauseRecursive = Nothing
                 , clauseUnreachable = Nothing
-                , clauseEllipsis = NoEllipsis }
+                , clauseEllipsis = NoEllipsis
+                , clauseWhereModule = Nothing}
 
     reportSDoc "toDk.elimPattMatch.below" 20 $ AP.prettyTCM $ clause
     return clause
@@ -380,7 +381,8 @@ mkCaseClause dname caseTy consName =
                 , clauseExact = Nothing
                 , clauseRecursive = Nothing
                 , clauseUnreachable = Nothing
-                , clauseEllipsis = NoEllipsis }
+                , clauseEllipsis = NoEllipsis
+                , clauseWhereModule = Nothing}
     reportSDoc "toDk.elimPattMatch" 20 $ AP.prettyTCM $ clause
     return clause
 

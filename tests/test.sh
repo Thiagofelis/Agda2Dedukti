@@ -81,7 +81,7 @@ for file in $test_files ; do
 	echo -n "$option_name : "
 	# translation phase	
 	cd files
-	output=$(stack exec -- Agda2Dedukti-exe $option --outDir="../$(code_to_output_dir $option_code)" $(basename $file))
+	output=$(stack exec -- Agda2Dedukti-exe --keep-covering-clauses $option --outDir="../$(code_to_output_dir $option_code)" $(basename $file))
 	status=$?
 	cd ..	
 	if [ "$status" == "0" ] ; then
