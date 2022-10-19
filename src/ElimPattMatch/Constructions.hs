@@ -385,7 +385,32 @@ mkCaseClause dname caseTy consName =
                 , clauseWhereModule = Nothing}
     reportSDoc "toDk.elimPattMatch" 20 $ AP.prettyTCM $ clause
     return clause
+{-
+data Construction = TheCase | TheBelow | ThePrfBelow | TheRec
 
+mkConstruction :: DkMonad m => QName -> Construction -> m Definition
+mkConstruction dQName construction =
+  do
+    Datatype{dataCons = cons} <- theDef <$> getConstInfo dQName
+    dType <- defType <$> getConstInfo dQName
+    pars <- theTel <$> telView dType
+
+    ty <- case construction of
+      TheCase -> mkCaseType dQName
+      TheBelow -> mkBelowType dQName
+      _ -> __IMPOSSIBLE__
+
+
+    dQNameString <- render <$> AP.prettyTCM dQName
+    constructionName <- liftTCM $ freshName_ $ "below" ++ dQNameString
+    let constrQName = QName{qnameModule = qnameModule dQName, qnameName = constructionName}
+
+    liftTCM $ addConstant constrQName $
+      defaultDefn defaultArgInfo constrQName ty WithoutK emptyFunction
+
+
+    __TODO__
+-}
 -- given dataype name D, generates bellow_D
 mkBelow :: DkMonad m => QName -> m Definition
 mkBelow qname =

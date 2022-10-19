@@ -1,10 +1,11 @@
+STDLIBPATH=agda/std-lib
+
 all: compile
 
 compile:
 	stack build --fast
 
 theory-objects:
-#	cd theory/dk/eta && rm -f *.dko ; dkcheck -e univ.dk && dkcheck -e Agda.dk
 	cd theory/dk/noEta && rm -f *.dko ; dkcheck -e nat.dk && dkcheck -e univ.dk && dkcheck -e Agda.dk
 	cd theory/lp/AgdaTheory && make clean && make install
 
@@ -27,13 +28,12 @@ test-lp: theory-objects
 test-elimPattMatch: theory-objects
 	cd tests && bash test.sh "5"
 
+# change STDLIBPATH accordingly to the std-lib path
+std-lib: theory-objects
+	mkdir -p std-lib-out
+	cd agda/std-lib/src && stack exec -- Agda2Dedukti-exe --dk Everything.agda --outDir=../../../std-lib-out/
 
-# NB ?= -1
-# TIMEOUT ?=0
 
-# std-lib-no-eta: compile
-# 	bash "./translation/dk/generate_std-lib.sh" $(AGDA_STD_DIR) $(EXEC) "--dk $(OPTS)" $(shell pwd)/$(DK_STD_DIR) $(NB)
-#	cd $(STD_DIR) && make FLAGS="-e --snf $(DK_FLAGS)" TIMEOUT=$(TIMEOUT);
-
-# clean-std-lib:
-#	rm $(STD_DIR)/*.dk* $(STD_DIR)/.depend
+std-lib2: theory-objects
+	mkdir -p std-lib-out
+	cd agda/std-lib/src && stack exec -- Agda2Dedukti-exe --dk Algebra.agda -i Algebra --outDir=../../../std-lib-out/

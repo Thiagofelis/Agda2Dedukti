@@ -171,33 +171,34 @@ dkPreModule (opts,_) _ mods _ =
 dkPostModule :: (DkOptions, IORef DkState) -> () -> IsMain -> TopLevelModuleName -> [Definition] -> TCM ()
 dkPostModule (opts, ref) _ _ mods defs =
   do
-    let dkMode = case (optDkModeLp opts) of False -> DkMode
-                                            True  -> LpMode
+    let dkMode = case (optDkModeLp opts) of False -> DkMode; True  -> LpMode
 
+    -- gets state
     state <- liftIO $ readIORef ref
-    
+
+    -- translates all definitions
     (translatedDefs', newState) <-
       runStateT
-      (mapM (\def ->
-               case theDef def of
-                 Constructor{} -> -- compilation of constructor c of D is handled by compilation of D
-                   return []
-                 _             ->
-                   translateDef opts def)
+      -- compilation of constructor c of D is handled by compilation of D, so we skip c
+      (mapM (\def -> case theDef def of Constructor{} -> return []; _ -> translateDef opts def)
        defs)
       state
 
+    -- writes state
     liftIO $ writeIORef ref newState
-      
+
+    -- prints the defs to docs
     let translatedDefs =
           map (\(mutualId, def) -> (mutualId, toDkDocs (modName2DkModIdent mods) dkMode def))
-          (concat translatedDefs')
+          $ concat translatedDefs'
 
-    -- We sort the file, to make sure that declarations and rules
-    -- do not refer to formerly declared symbols.    
+    -- We sort the translated docs by using the mutualIDs
     let output = show $ orderDeclRules translatedDefs
+
+    -- add requires to the begining of file (only needed by lambdapi)
     let outLp = addRequires opts output
-    liftIO $ writeFile (filePath opts mods) (if (optDkModeLp opts) then outLp else output)
+
+    liftIO $ writeFile (filePath opts mods) $ if optDkModeLp opts then outLp else output
 
 -- this functions goes through the text that is going to be printed in the .lp file
 -- and seee which modules it uses and add a require for them. using regular
@@ -261,25 +262,31 @@ translateDef :: DkMonad m => DkOptions -> Definition -> m [(Int32, DkDefinition)
 translateDef dkOpts def@(Defn {defCopy=isCopy, defName=n, theDef=d, defType=t, defMutual=MutId m}) =
   if isCopy
   then do
-    reportSDoc "toDk" 8 $ (\x -> text "  No compilation of"<+>x<+>text "which is a copy") <$> AP.prettyTCM n
+    reportSDoc "toDk" 8 $
+      (\x -> text "  No compilation of"<+>x<+>text "which is a copy") <$> AP.prettyTCM n
     return []
   else do
     reportSDoc "toDk" 3 $ (text "  Compiling definition of" <+>) <$> AP.prettyTCM n
     reportSDoc "toDk" 10 $ return $ text "    of type" <+> pretty t
     reportSDoc "toDk" 60 $ return $ text "    " <> pretty def
 
+    -- if d is a datatype or record, we translate its constructors
     extraDefs <-
       case d of
         Datatype{dataIxs = numIndices, dataCons = consNames} -> do
+          -- if d is a non-indexed datatype and the --elimPattMatch flag is on, we generate
+          -- the caseD and belowD, and translate them
           compiledCase <-
             if numIndices == 0 && optDkElimPattMatch dkOpts then do
               theCase <- mkCase n
               theBelow <- mkBelow n
-              translatedCase <- translateDef dkOpts theCase{defMutual=MutId m} -- change the mutual id, to print in order
+              -- change the mutual ids, to print them in the right order
+              translatedCase <- translateDef dkOpts theCase{defMutual=MutId m}
               translatedBelow <- translateDef dkOpts theBelow{defMutual=MutId m}
               return $ translatedCase ++ translatedBelow
             else
               return []
+          -- we translate the constructors the constructors
           consDefs <- mapM getConstInfo consNames
           consTranslated <- concat <$> mapM (translateDef dkOpts) consDefs
           return $ consTranslated ++ compiledCase
@@ -288,26 +295,30 @@ translateDef dkOpts def@(Defn {defCopy=isCopy, defName=n, theDef=d, defType=t, d
           translateDef dkOpts consDef
         _ -> return []
 
-    inTopContext $ do -- why in top context ?
-      reportSDoc "toDk" 15 $ return $ text "Getting type"
-      t' <- liftTCM $ reconstructParametersInType' defaultAction t -- t with parameters reconstructed
-      typ        <- liftTCM $ translateType t'
-      reportSDoc "toDk" 15 $ return $ text "Getting name"      
-      Right name <- liftTCM $ qName2DkName n -- n is not a copy
-      reportSDoc "toDk" 15 $ return $ text "Getting kind"
-      kind       <- liftTCM $ getKind t
-      reportSDoc "toDk" 15 $ return $ text "Getting staticity"
-      stat       <- liftTCM $ extractStaticity n d
-      reportSDoc "toDk" 15 $ return $ text "Getting rules of " <+> pretty d
-      rules      <- extractRules dkOpts n d t
+    reportSDoc "toDk" 15 $ return $ text "Getting type"
+    -- reconstructs parameters of the type t of the definition and then translates this type
+    t' <- liftTCM $ reconstructParametersInType' defaultAction t
+    typ        <- liftTCM $ translateType t'
 
-      let dkDef = DkDefinition
-            { name      = name
-            , staticity = stat
-            , typ       = typ
-            , kind      = kind
-            , rules     = rules}
-      return $ (m, dkDef) : extraDefs
+    reportSDoc "toDk" 15 $ return $ text "Getting name"
+    Right name <- liftTCM $ qName2DkName n -- n is not a copy
+
+    reportSDoc "toDk" 15 $ return $ text "Getting kind"
+    kind       <- liftTCM $ getKind t
+
+    reportSDoc "toDk" 15 $ return $ text "Getting staticity"
+    stat       <- liftTCM $ extractStaticity n d
+
+    reportSDoc "toDk" 15 $ return $ text "Getting rules of " <+> pretty d
+    rules      <- extractRules dkOpts n d t
+
+    let dkDef = DkDefinition
+          { name      = name
+          , staticity = stat
+          , typ       = typ
+          , kind      = kind
+          , rules     = rules}
+    return $ (m, dkDef) : extraDefs
 
 translateType :: Type -> TCM DkTerm
 -- a type is a term with a sort annotation (as in nat : Set0)
@@ -330,8 +341,6 @@ extractStaticity _ (Primitive {})    = return Defin
 -- trying to guess the following ones, not sure
 extractStaticity _ (PrimitiveSort {})    = return Defin
 extractStaticity _ (AbstractDefn {})    = return Static
-
-
   
 extractRules :: DkMonad m => DkOptions -> QName -> Defn -> Type -> m [DkRule]
 
@@ -524,7 +533,16 @@ clause2rule nam c = do
   case (clauseBody c) of
     -- Nothing means this is an absurd clause, with () at the end, so it has no body
     Nothing  -> return Nothing
-    Just r   ->
+    Just r ->
+      -- throws cubical clauses out. to do this, we see if the body starts with a cubical constant
+      ifM (case r of
+                Def qname _ -> do
+                  x <- AP.prettyTCM qname
+                  let agda_primitive_cubical = take 3 $ words $
+                        map (\c -> if c == '.' then ' ' else c) $ render x
+                  return $ agda_primitive_cubical == ["Agda", "Primitive", "Cubical"]
+                _ -> return False)
+      (return Nothing) $
       -- adds to the context the bound variables of the clause
       addContext (clauseTel c) $
       unsafeModifyContext separateVars $
@@ -539,7 +557,7 @@ clause2rule nam c = do
         -- covering checker. therefore, we get the number of implicit arguments, so we
         -- generate joker in order to fill the implicit arguments.
         -- for the othe functions, they already have the implicit arguments, as they
-        -- have already went trough the covering checker
+        -- have already gone through the covering checker
         imp <- isProjection nam        
         implicits <-
           case imp of
@@ -810,7 +828,7 @@ extractPattern p applyingType = do
       return $ Just (DkFun dkNam params, finalTy)
 
     otherwise                           -> do
-      reportSDoc "toDk.clause" 30 $ return $ text $ "Unexpected pattern of HoTT: " ++ show patt
+      reportSDoc "toDk.clause" 30 $ return $ text $ "Unexpected pattern: " ++ show patt
       return Nothing
   where
 
@@ -946,7 +964,6 @@ translateTerm (Pi d@(Dom {unDom=a}) bb) = do
           El {unEl=Def h []} -> do
             hd <- qName2DkName h
             -- is it Level?
-            reportSDoc "toDk.hi" 3 $ return $ text $ show hd
             if hd == Right (DkQualified ["Agda","Primitive"] [] "Level")
               -- yes! this is a a level quantification
             then return $ DkQuantifLevel kb (name2DkIdent nam) body
