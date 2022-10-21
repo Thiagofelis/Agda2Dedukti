@@ -408,8 +408,29 @@ mkConstruction dQName construction =
     liftTCM $ addConstant constrQName $
       defaultDefn defaultArgInfo constrQName ty WithoutK emptyFunction
 
+    -- stores in dkstate the qname of belowD
+    dkState <- get
+    put $ case construction of
+      TheCase ->
+        dkState{caseOfData = (\x -> if x == qname then Just constrQName else dkState caseOfData x)}
+      TheBelow ->
+        dkState{belowOfData=(\x -> if x == qname then Just constrQName else dkState belowOfData x)}
+      _ -> __IMPOSSIBLE__
+
+    -- computes the clauses
+    clauses <- case construction of
+      TheCase -> mapM (\consname -> mkCaseClause dQName ty consname) cons
+      TheBelow -> mapM (\consname -> mkBelowClause dQName ty consname) cons
+      __IMPOSSIBLE__
+
+    liftTCM $ addClauses belowQName clauses
+
+    -- gets the updated definition and returns it
+    updatedDef <- getConstInfo belowQName
+    return updatedDef
 
     __TODO__
+
 -}
 -- given dataype name D, generates bellow_D
 mkBelow :: DkMonad m => QName -> m Definition

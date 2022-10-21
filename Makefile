@@ -36,4 +36,7 @@ std-lib: theory-objects
 
 std-lib2: theory-objects
 	mkdir -p std-lib-out
-	cd agda/std-lib/src && stack exec -- Agda2Dedukti-exe --dk Algebra.agda -i Algebra --outDir=../../../std-lib-out/
+	cd agda/std-lib/src && stack exec -- Agda2Dedukti-exe --dk Algebra.agda -i Algebra --outDir=../../../std-lib-out/ && cd ../../..
+	rm -f std-lib-out/Agda__Primitive.dk
+	cp tests/output/dk/Agda__Primitive.dk std-lib-out/Agda__Primitive.dk
+	cd std-lib-out && dkdep -I ../theory/dk/noEta/ *.dk > ./.depend && cd ..

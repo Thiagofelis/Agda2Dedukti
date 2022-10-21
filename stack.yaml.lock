@@ -5,15 +5,15 @@
 
 packages:
 - completed:
-    commit: aed62b9d482fc11c92a2bd2105e6fee7b4776ae9
+    commit: 4b3d540d25ee939c8f10b0987e1fe2a69b3400a2
     git: https://github.com/agda/agda.git
     name: Agda
     pantry-tree:
-      sha256: 4002d1b711166ec1222e7379caf1131d5b9cbe5c8eace8d8de58c1862d1eec17
-      size: 758141
+      sha256: 758e4e642c2141261fb6ad0a78d957f342fcc7e237cd9d97bfd6c94740f5460c
+      size: 758689
     version: 2.6.3
   original:
-    commit: aed62b9d482fc11c92a2bd2105e6fee7b4776ae9
+    commit: 4b3d540d25ee939c8f10b0987e1fe2a69b3400a2
     git: https://github.com/agda/agda.git
 - completed:
     hackage: Unique-0.4.7.9@sha256:a7e154cf6d05169777a1e54aadab24fb3a6eae3ee167e5e77d7ba96d182436c7,2064

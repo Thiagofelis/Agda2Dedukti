@@ -38,7 +38,7 @@ packages:
 extra-deps:
 # - agda
   - git: https://github.com/agda/agda.git
-    commit: aed62b9d482fc11c92a2bd2105e6fee7b4776ae9
+    commit: 4b3d540d25ee939c8f10b0987e1fe2a69b3400a2
   - Unique-0.4.7.9@sha256:a7e154cf6d05169777a1e54aadab24fb3a6eae3ee167e5e77d7ba96d182436c7,2064
   - vector-hashtables-0.1.1.1@sha256:cb4ba4af6b83b6956278bbfe8d0f779a40928728e82977e566c0103fe8d6c867,2725
 # - acme-missiles-0.3

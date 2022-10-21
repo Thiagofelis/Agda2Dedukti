@@ -298,6 +298,7 @@ translateDef dkOpts def@(Defn {defCopy=isCopy, defName=n, theDef=d, defType=t, d
     reportSDoc "toDk" 15 $ return $ text "Getting type"
     -- reconstructs parameters of the type t of the definition and then translates this type
     t' <- liftTCM $ reconstructParametersInType' defaultAction t
+    reportSDoc "toDk" 15 $ return $ text "reconstruction finished"
     typ        <- liftTCM $ translateType t'
 
     reportSDoc "toDk" 15 $ return $ text "Getting name"
@@ -924,7 +925,8 @@ translateTerm (Lit l) =
   return $ translateLiteral l
 
 -- a function symbol n applied to a list of eliminations
-translateTerm (Def n elims) = do
+translateTerm tm@(Def n elims) = do
+  reportSDoc "toDk.translateTerm" 15 $ (text "  translating term" <+>) <$> AP.prettyTCM tm
   -- translate the function symbol
   nn <- qName2DkName n
   case nn of
@@ -933,13 +935,15 @@ translateTerm (Def n elims) = do
     -- if we get a term (why?) we translate it applied to the elim
     Left tt -> translateTerm (tt `applyE` elims)
 
-translateTerm (Con hh@(ConHead {conName=h}) i elims) = do
+translateTerm tm@(Con hh@(ConHead {conName=h}) i elims) = do
+  reportSDoc "toDk.translateTerm" 15 $ (text "  translating term" <+>) <$> AP.prettyTCM tm
   nn <- qName2DkName h
   case nn of
     Right nam -> translateElim (DkConst nam) elims
     Left tt -> translateTerm (tt `applyE` elims)
 
-translateTerm (Pi d@(Dom {unDom=a}) bb) = do
+translateTerm tm@(Pi d@(Dom {unDom=a}) bb) = do
+  reportSDoc "toDk.translateTerm" 15 $ (text "  translating term" <+>) <$> AP.prettyTCM tm
   ctx <- getContext
   -- nn is the name of the abstracting variable (Pi nn : a. bb)
   let nn = freshStr ctx (absName bb)
@@ -1072,12 +1076,21 @@ addEl _ _ = error "Those terms do not expect elimination"
 -- Translation of Name and QName function
 --------------------------------------------------------------------------------
 
+
+{- REVERT ME IF WE FIND A PROBLEM : now we return always a name -}
 qName2DkName :: QName -> TCM (Either Term DkName)
-qName2DkName qn@QName{qnameModule=mods, qnameName=nam} =
+qName2DkName qn =
   do
+    qn'@QName{qnameModule=mods, qnameName=nam} <-
+      isProjection qn >>= \x -> case x of Just q -> return $ projOrig q; _ -> return qn
+
     topMod <- topLevelModuleName mods
-    def <- getConstInfo qn
-    if defCopy def
+--    def <- getConstInfo qn'
+    let otherMods =
+          stripPrefix (modName2DkModIdent topMod) (map name2DkIdent $ mnameToList mods)
+    return $ Right $
+        DkQualified (modName2DkModIdent topMod) (maybe [] id otherMods) (name2DkIdent nam)
+    {-if defCopy def
     then do
       let ty = defType def
       -- why do we need to do etaExpansion here? why do we need to do this
@@ -1098,7 +1111,7 @@ qName2DkName qn@QName{qnameModule=mods, qnameName=nam} =
       let otherMods = stripPrefix (modName2DkModIdent topMod) (map name2DkIdent $ mnameToList mods) in
       return $ Right $
         DkQualified (modName2DkModIdent topMod) (maybe [] id otherMods) (name2DkIdent nam)
-
+-}
 name2DkIdent :: Name -> DkIdent
 name2DkIdent (Name {nameId=NameId id _, nameConcrete=CN.Name {CN.nameNameParts=n}}) =
   let list = toList n in
