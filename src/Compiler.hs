@@ -278,8 +278,10 @@ translateDef dkOpts def@(Defn {defCopy=isCopy, defName=n, theDef=d, defType=t, d
           -- the caseD and belowD, and translate them
           compiledCase <-
             if numIndices == 0 && optDkElimPattMatch dkOpts then do
-              theCase <- mkCase n
-              theBelow <- mkBelow n
+              theCase <- mkConstruction TheCase n
+              theBelow <- mkConstruction TheBelow n
+              --theCase <- mkCase n
+              --theBelow <- mkBelow n
               -- change the mutual ids, to print them in the right order
               translatedCase <- translateDef dkOpts theCase{defMutual=MutId m}
               translatedBelow <- translateDef dkOpts theBelow{defMutual=MutId m}

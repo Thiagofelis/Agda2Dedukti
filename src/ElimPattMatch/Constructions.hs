@@ -118,9 +118,13 @@ mkEndType dataname numPars =
 
 -- given type D with numPars parameters
 -- builds the type (i : Level) -> (p : Pars) -> (P : D p -> Set_i) -> D p -> Set_i
-mkBelowType :: DkMonad m => QName -> Telescope -> m Type
-mkBelowType qname pars =
+mkBelowType :: DkMonad m => QName -> m Type
+mkBelowType qname =
   do
+    -- gets parameters telescope
+    dType <- defType <$> getConstInfo qname
+    pars <- theTel <$> telView dType
+
     levelType <- liftTCM $ levelType
     -- tel = i : Level, p : Pars
     let tel = ExtendTel (defaultDom levelType) (Abs{absName = "i", unAbs = pars})
@@ -128,7 +132,8 @@ mkBelowType qname pars =
     motiveTy <- liftTCM $ addContext tel $ mkMotiveType qname $ length pars
 
     -- tel' = i : Level, p : Pars, P : D p -> Set_i
-    let tel' = tel `abstract` (ExtendTel (defaultDom motiveTy) Abs{absName =  "P", unAbs = EmptyTel})
+    let tel' =
+          tel `abstract` (ExtendTel (defaultDom motiveTy) Abs{absName =  "P", unAbs = EmptyTel})
 
 
     -- TODO : the end universe (Set i) can actually increase when dealing with higher-order recursion
@@ -140,9 +145,17 @@ mkBelowType qname pars =
     reportSDoc "toDk.elimPattMatch.below" 20 $ AP.prettyTCM caseType
     return caseType
 
-mkCaseType :: DkMonad m => QName -> Telescope -> [QName] -> m Type
-mkCaseType qname pars cons =
+
+mkCaseType :: DkMonad m => QName -> m Type
+mkCaseType qname =
   do
+    -- gets constructors
+    Datatype{dataCons = cons} <- theDef <$> getConstInfo qname
+
+    -- gets parameters telescope
+    dType <- defType <$> getConstInfo qname
+    pars <- theTel <$> telView dType
+
     levelType <- liftTCM $ levelType
     -- tel = i : Level, p : Pars
     let tel = ExtendTel (defaultDom levelType) (Abs{absName = "i", unAbs = pars})
@@ -150,7 +163,9 @@ mkCaseType qname pars cons =
     motiveTy <- liftTCM $ addContext tel $ mkMotiveType qname $ length pars
 
     -- tel' = i : Level, p : Pars, P : D p -> Set_i
-    let tel' = tel `abstract` (ExtendTel (defaultDom motiveTy) Abs{absName =  "P", unAbs = EmptyTel})
+    let tel' =
+          tel `abstract` (ExtendTel (defaultDom motiveTy) Abs{absName =  "P", unAbs = EmptyTel})
+
     methods <- liftTCM $ addContext tel' $ mapM mkCaseMethodType cons
     let methodsRaised =
           reverse $ fst $
@@ -385,26 +400,26 @@ mkCaseClause dname caseTy consName =
                 , clauseWhereModule = Nothing}
     reportSDoc "toDk.elimPattMatch" 20 $ AP.prettyTCM $ clause
     return clause
-{-
+
 data Construction = TheCase | TheBelow | ThePrfBelow | TheRec
 
-mkConstruction :: DkMonad m => QName -> Construction -> m Definition
-mkConstruction dQName construction =
+mkConstruction :: DkMonad m => Construction -> QName -> m Definition
+mkConstruction construction dQName =
   do
-    Datatype{dataCons = cons} <- theDef <$> getConstInfo dQName
-    dType <- defType <$> getConstInfo dQName
-    pars <- theTel <$> telView dType
-
+    -- gets the type
     ty <- case construction of
       TheCase -> mkCaseType dQName
       TheBelow -> mkBelowType dQName
       _ -> __IMPOSSIBLE__
 
+    -- creates name
+    constrQName <- do
+      dQNameString <- liftTCM $ render <$> AP.prettyTCM dQName
+      let str = case construction of TheCase -> "case"; TheBelow -> "below"; _ -> __IMPOSSIBLE__
+      constructionName <- liftTCM $ freshName_ $ str ++ dQNameString
+      return QName{qnameModule = qnameModule dQName, qnameName = constructionName}
 
-    dQNameString <- render <$> AP.prettyTCM dQName
-    constructionName <- liftTCM $ freshName_ $ "below" ++ dQNameString
-    let constrQName = QName{qnameModule = qnameModule dQName, qnameName = constructionName}
-
+    -- declares the constant
     liftTCM $ addConstant constrQName $
       defaultDefn defaultArgInfo constrQName ty WithoutK emptyFunction
 
@@ -412,26 +427,29 @@ mkConstruction dQName construction =
     dkState <- get
     put $ case construction of
       TheCase ->
-        dkState{caseOfData = (\x -> if x == qname then Just constrQName else dkState caseOfData x)}
+        dkState{caseOfData =
+                (\x -> if x == dQName then Just constrQName else caseOfData dkState x)}
       TheBelow ->
-        dkState{belowOfData=(\x -> if x == qname then Just constrQName else dkState belowOfData x)}
+        dkState{belowOfData =
+                (\x -> if x == dQName then Just constrQName else belowOfData dkState x)}
       _ -> __IMPOSSIBLE__
 
     -- computes the clauses
-    clauses <- case construction of
-      TheCase -> mapM (\consname -> mkCaseClause dQName ty consname) cons
-      TheBelow -> mapM (\consname -> mkBelowClause dQName ty consname) cons
-      __IMPOSSIBLE__
+    clauses <- do
+      Datatype{dataCons = cons} <- theDef <$> getConstInfo dQName -- gets constructors
+      case construction of
+        TheCase -> mapM (\consname -> mkCaseClause dQName ty consname) cons
+        TheBelow -> mapM (\consname -> mkBelowClause dQName ty consname) cons
+        _ -> __IMPOSSIBLE__
 
-    liftTCM $ addClauses belowQName clauses
+    -- adds the clauses
+    liftTCM $ addClauses constrQName clauses
 
     -- gets the updated definition and returns it
-    updatedDef <- getConstInfo belowQName
+    updatedDef <- getConstInfo constrQName
     return updatedDef
 
-    __TODO__
-
--}
+{-
 -- given dataype name D, generates bellow_D
 mkBelow :: DkMonad m => QName -> m Definition
 mkBelow qname =
@@ -537,7 +555,7 @@ mkCase qname =
     dkState@DkState{caseOfData = caseOfData, belowOfData = belowOfData} <- get
     put $ dkState{caseOfData = (\x -> if x == qname then Just caseQName else caseOfData x)}
     return theCase
-      
+-}
 telNames :: Telescope -> [String]
 telNames EmptyTel = []
 telNames (ExtendTel _ Abs{absName = name, unAbs = nextTel}) = name : (telNames nextTel)
