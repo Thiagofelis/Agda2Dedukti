@@ -135,8 +135,7 @@ mkBelowType qname =
     let tel' =
           tel `abstract` (ExtendTel (defaultDom motiveTy) Abs{absName =  "P", unAbs = EmptyTel})
 
-
-    -- TODO : the end universe (Set i) can actually increase when dealing with higher-order recursion
+    -- TODO : the end universe (Set i) can actually increase when using higher-order recursion
     -- whose indexing type is at universe > 0
     end <- liftTCM $ addContext tel $ raise 1 <$> mkMotiveType qname (length pars)
 
@@ -257,101 +256,87 @@ getUnitQName = do
 mkBelowProduct :: DkMonad m =>
   QName -> -- qname of D
   QName -> -- qname of constructor
-  Int -> -- number of recursive arguments of the constructor
   Int -> -- index of the rec argument in which we are doing product
-  Telescope -> -- the telescope of arguments of the recursive argument
+  Telescope -> -- the telescope of arguments of the recursive argument (Phi_ix)
   m Type
-mkBelowProduct dName consName nRecArgs ix ixArgs =
+mkBelowProduct dName consName ix ixArgs =
   do
-    dkState@DkState{belowOfData = belowOfData} <- get
-    let Just belowName = belowOfData dName
-
-
-    let lengthElim = length ixArgs
-    let argsElim = genElim lengthElim
-
-    consTy <- defType <$> getConstInfo consName
-    consArgs <- theTel <$> telView consTy
-    let numArgs = length $ removeParams consArgs
-
-    Datatype{dataCons = cons, dataPars = numPars} <- theDef <$> getConstInfo dName
+    let numIxArgs = length ixArgs -- lenght of Phi_ix
+    numArgs <- -- number of args the constructor takes
+      length <$> removeParams <$> theTel <$> (telView =<< defType <$> getConstInfo consName)
 
     -- builds the term i, pars, consArgs, v : Phi_i |- Below i pars P (h_i v)
+    bellowApp <- do
+          DkState{belowOfData = belowOfData} <- get
+          let Just belowName = belowOfData dName
 
-    let bellowApp =
-          let i_ = [Apply $ defaultArg $ Var (lengthElim + numArgs + 1 + numPars) []] in
-          let pars_ = raise (lengthElim + numArgs + 1) $ genElim numPars in
-          let p_ = [Apply $ defaultArg $ Var (lengthElim + numArgs) []] in
-          let hi_ = [Apply $ defaultArg $ Var (lengthElim + ix) $ argsElim] in
-          Def belowName (i_ ++ pars_ ++ p_ ++ hi_)
+          Datatype{dataPars = numPars} <- theDef <$> getConstInfo dName
 
+          let i_ = [Apply $ defaultArg $ Var (numIxArgs + numArgs + 1 + numPars) []]
+          let pars_ = raise (numIxArgs + numArgs + 1) $ genElim numPars
+          let p_ = [Apply $ defaultArg $ Var (numIxArgs + numArgs) []]
+          let hi_ = [Apply $ defaultArg $ Var (numIxArgs + ix) $ genElim numIxArgs]
+          return $ Def belowName (i_ ++ pars_ ++ p_ ++ hi_)
+
+    -- builds the term i, pars, consArgs, v : Phi_i |- P (h_i v)
     let p_hi =
-          let hi_ = [Apply $ defaultArg $ Var (lengthElim + ix) $ argsElim] in
-          Var (lengthElim + numArgs) hi_
+          let hi_ = [Apply $ defaultArg $ Var (numIxArgs + ix) $ genElim numIxArgs] in
+          Var (numIxArgs + numArgs) hi_
 
-    reportSDoc "toDk.elimPattMatch.below" 20 $ AP.prettyTCM (ixArgs `abstract` bellowApp)
-    reportSDoc "toDk.elimPattMatch.below" 20 $ AP.prettyTCM (ixArgs `abstract` p_hi)
-
-    prod <- addContext ixArgs $
+    prod <- addContext ixArgs $ telePi ixArgs <$>
       do
         below_ap_ty <- typeOfTerm bellowApp
         p_hi_ty <- typeOfTerm p_hi
         mkProd below_ap_ty p_hi_ty
 
-    let prod' = telePi ixArgs prod
-    reportSDoc "toDk.elimPattMatch.below" 20 $ AP.prettyTCM prod'
-    return prod'
+    reportSDoc "toDk.elimPattMatch.below" 20 $ AP.prettyTCM prod
+    return prod
+
+assembleClause :: QName -> Telescope -> Telescope -> Type -> Term -> Clause
+assembleClause consName gamma consTel clauseTy body =
+  let patts =
+        (genPattsFromInts $ reverse $ map ((+) $ length consTel) [0 .. ((length gamma) - 1)])
+          ++ [defaultNamedArg $ ConP (defaultConHead consName) noConPatternInfo $
+              genPattsFromInts $ reverse [0 .. ((length consTel) - 1)]] in
+  Clause{ clauseLHSRange = NoRange
+        , clauseFullRange = NoRange
+        , clauseTel = gamma `abstract` consTel
+        , namedClausePats = patts
+        , clauseBody = Just body
+        , clauseType = Just $ defaultArg clauseTy
+        , clauseCatchall = False
+        , clauseExact = Nothing
+        , clauseRecursive = Nothing
+        , clauseUnreachable = Nothing
+        , clauseEllipsis = NoEllipsis
+        , clauseWhereModule = Nothing}
+
 
 mkBelowClause :: DkMonad m => QName -> Type -> QName -> m Clause
 mkBelowClause dname belowTy consName =
   do
-    TelV{theTel = tel, theCore = belowCoDomTy} <- telView belowTy
+    -- Γ, ϕ ⊢ clauseTy, where ϕ are the constructor arguments
+    (gamma, consTel, clauseTy) <- mkClauseTele dname belowTy consName
 
-    Datatype{dataCons = cons, dataPars = numPars} <- theDef <$> getConstInfo dname
-    let Just consIndex = elemIndex consName cons
+    body <- do
+      let clauseTel = gamma `abstract` consTel
 
-    -- splits the telescope tel as Gamma, x : D pars
-    let (gamma, ExtendTel Dom{unDom = El{unEl = Def _ pars}} Abs{unAbs = EmptyTel}) =
-          splitTelescopeAt ((length tel) - 1) tel
+      -- gets the higher order args telescopes
+      ho_tel <- mkHOTel dname consName
 
-    -- we have Gamma, a : Phi, Empty |- belowCoDomTy{c a/x}
-    (_, consTel, _, clauseTy') <-
-      instantiateWithConstructor gamma dname pars EmptyTel belowCoDomTy consName
+      unit <- getUnitQName
 
-    let clauseTel = gamma `abstract` consTel
+      -- generates list with the (v : Phi_i -> belowD i pars P (h_i v) /\ P (h_i v))
+      -- for each recursive argument of the constructor
+      belows <- addContext clauseTel $
+        mapM (\(i, tel) -> mkBelowProduct dname consName i tel) ho_tel
 
-    -- gets the higher order args telescopes
-    ho_tel <- mkHOTel dname consName
+      -- builds the body by taking the product of everyone in belows
+      case belows of
+        [] -> typeOfTerm $ Def unit $ [Apply $ defaultArg $ Var (length clauseTel - 1) []]
+        x : l -> addContext clauseTel $ foldM (\v x -> mkProd x v) x l
 
-    -- generates list with the (v : Phi_i -> belowD i pars P (h_i v) /\ P (h_i v)), for each recursive argument of the constructor
-    belows <- addContext clauseTel $
-      mapM (\(i, tel) -> mkBelowProduct dname consName (length ho_tel) i tel) ho_tel
-
-    unit <- getUnitQName
-
-    -- builds the body by taking the product of everyone in belows
-    body <- case belows of
-      [] -> typeOfTerm $ Def unit $ [Apply $ defaultArg $ Var (length clauseTel - 1) []]
-      x : l ->  addContext clauseTel $ foldM (\v x -> mkProd x v) x l
-
-    let patts =
-          (genPattsFromInts $ reverse $ map ((+) $ length consTel) [0 .. ((length gamma) - 1)])
-          ++ [defaultNamedArg $ ConP (defaultConHead consName) noConPatternInfo $
-               genPattsFromInts $ reverse [0 .. ((length consTel) - 1)]]
-
-    let clause =
-          Clause{ clauseLHSRange = NoRange
-                , clauseFullRange = NoRange
-                , clauseTel = clauseTel
-                , namedClausePats = patts
-                , clauseBody = Just (unEl body)
-                , clauseType = Just $ defaultArg clauseTy'
-                , clauseCatchall = False
-                , clauseExact = Nothing
-                , clauseRecursive = Nothing
-                , clauseUnreachable = Nothing
-                , clauseEllipsis = NoEllipsis
-                , clauseWhereModule = Nothing}
+    let clause = assembleClause consName gamma consTel clauseTy (unEl body)
 
     reportSDoc "toDk.elimPattMatch.below" 20 $ AP.prettyTCM $ clause
     return clause
@@ -359,47 +344,42 @@ mkBelowClause dname belowTy consName =
 mkCaseClause :: DkMonad m => QName -> Type -> QName -> m Clause
 mkCaseClause dname caseTy consName =
   do
-    TelV{theTel = tel, theCore = clauseTy} <- telView caseTy
-    
-    Datatype{dataCons = cons, dataPars = numPars} <- theDef <$> getConstInfo dname
-    let Just consIndex = elemIndex consName cons
+    -- Γ, ϕ ⊢ clauseTy, where ϕ are the constructor arguments
+    (gamma, consTel, clauseTy) <- mkClauseTele dname caseTy consName
 
-    -- we calculate the index od m_cons in
-    -- i : Lvl, pars : Pars, P : D pars -> Set i, m_0 .. m_k-1, x : D
-    let consMethodIndex = (length cons) - consIndex
-
-
-    -- splits the telescope tel as Gamma, x : D pars
-    let (gamma, ExtendTel Dom{unDom = El{unEl = Def _ pars}} Abs{unAbs = EmptyTel}) =
-          splitTelescopeAt ((length tel) - 1) tel
-
-    -- we have Gamma, a : Phi, Empty |- caseTy{c a/x}
-    (_, consTel, _, clauseTy') <- instantiateWithConstructor gamma dname pars EmptyTel clauseTy consName
-    
-    let clauseTel = gamma `abstract` consTel
-
-    let body = Var (consMethodIndex + (length consTel) - 1) $ genElim $ length consTel
+    body <- do
+          Datatype{dataCons = cons} <- theDef <$> getConstInfo dname
+          let Just consIndex = elemIndex consName cons
+          -- the index of m_cons in
+          -- i : Lvl, pars : Pars, P : D pars -> Set i, m_0 .. m_k-1, a : Phi
+          let consMethodIndex = (length cons) + (length consTel) - consIndex - 1
+          return $ Var consMethodIndex $ genElim $ length consTel
 
     let patts =
           (genPattsFromInts $ reverse $ map ((+) $ length consTel) [0 .. ((length gamma) - 1)])
           ++ [defaultNamedArg $ ConP (defaultConHead consName) noConPatternInfo $
                genPattsFromInts $ reverse [0 .. ((length consTel) - 1)]]
 
-    let clause =
-          Clause{ clauseLHSRange = NoRange
-                , clauseFullRange = NoRange
-                , clauseTel = clauseTel
-                , namedClausePats = patts
-                , clauseBody = Just body
-                , clauseType = Just $ defaultArg clauseTy'
-                , clauseCatchall = False
-                , clauseExact = Nothing
-                , clauseRecursive = Nothing
-                , clauseUnreachable = Nothing
-                , clauseEllipsis = NoEllipsis
-                , clauseWhereModule = Nothing}
+    let clause = assembleClause consName gamma consTel clauseTy body
+
     reportSDoc "toDk.elimPattMatch" 20 $ AP.prettyTCM $ clause
     return clause
+
+-- given a type Γ -> x : D -> A and a constructor c of D,
+-- returns (Γ, args : ϕ, A{c args / x}), where c : (args : ϕ) -> D
+mkClauseTele :: DkMonad m => QName -> Type -> QName -> m (Telescope, Telescope, Type)
+mkClauseTele dname ty consName =
+  do
+    TelV{theTel = tel, theCore = clauseTy} <- telView ty
+
+    -- splits the telescope tel as Gamma, x : D pars
+    let (gamma, ExtendTel Dom{unDom = El{unEl = Def _ pars}} Abs{unAbs = EmptyTel}) =
+          splitTelescopeAt ((length tel) - 1) tel
+
+    -- we have Gamma, a : Phi, Empty |- caseTy{c a/x}
+    (_, consTel, _, clauseTy') <-
+      instantiateWithConstructor gamma dname pars EmptyTel clauseTy consName
+    return (gamma, consTel, clauseTy')
 
 data Construction = TheCase | TheBelow | ThePrfBelow | TheRec
 
@@ -449,113 +429,6 @@ mkConstruction construction dQName =
     updatedDef <- getConstInfo constrQName
     return updatedDef
 
-{-
--- given dataype name D, generates bellow_D
-mkBelow :: DkMonad m => QName -> m Definition
-mkBelow qname =
-  do
-    Datatype{dataCons = cons} <- theDef <$> getConstInfo qname
-    dType <- defType <$> getConstInfo qname
-    pars <- theTel <$> telView dType
-
-    -- calculates the type of belowD
-    belowType <- mkBelowType qname pars
-    let theDef =
-          Function{ funClauses = []
-                  , funCompiled = Nothing
-                  , funSplitTree = Nothing
-                  , funTreeless = Nothing
-                  , funCovering = []
-                  , funInv = NotInjective
-                  , funMutual = Nothing
-                  , funAbstr = ConcreteDef
-                  , funDelayed = NotDelayed
-                  , funProjection = Nothing
-                  , funFlags = Data.Set.empty
-                  , funTerminates = Nothing
-                  , funExtLam = Nothing
-                  , funWith = Nothing }
-
-    -- generates the name of the case
-    let dataTypeNameString = concat $
-                             map (\x -> case x of
-                                          CN.Hole -> "_"
-                                          CN.Id s -> s) $
-                             toList $ CN.nameNameParts $ nameConcrete $ qnameName qname
-    belowName <- liftTCM $ freshName_ $ "below" ++ dataTypeNameString
-    let belowQName = QName{qnameModule = qnameModule qname, qnameName = belowName}
-
-    -- the final definition without the clauses
-    let theBelow = defaultDefn defaultArgInfo belowQName belowType WithoutK theDef
-
-    -- adds the definition to the tcm
-    liftTCM $ addConstant belowQName $ theBelow
-
-    -- stores in dkstate the qname of belowD
-    dkState@DkState{belowOfData = belowOfData} <- get
-    put $ dkState{belowOfData = (\x -> if x == qname then Just belowQName else belowOfData x)}
-
-    -- computes the clauses of belowD
-    clauses <- mapM (\consname -> mkBelowClause qname belowType consname) cons
-
-    liftTCM $ addClauses belowQName clauses
-
-    -- gets the updated definition and returns it
-    updatedDef <- getConstInfo belowQName
-    return updatedDef
-
--- given dataype name D, generates the type of case_D
-mkCase :: DkMonad m => QName -> m Definition
-mkCase qname =
-  do
-    Datatype{dataCons = cons} <- theDef <$> getConstInfo qname
-    dType <- defType <$> getConstInfo qname
-    pars <- theTel <$> telView dType
-
-    -- builds the type of the case
-    caseType <- mkCaseType qname pars cons
-
-    _ <- mkBelowType qname pars
-
-    -- builds the clauses describing the computational behavior of the case
-    clauses <- mapM (\consname -> mkCaseClause qname caseType consname) cons
-
-    let theDef =
-          Function{ funClauses = clauses
-                  , funCompiled = Nothing
-                  , funSplitTree = Nothing
-                  , funTreeless = Nothing
-                  , funCovering = clauses -- should we do this?
-                  , funInv = NotInjective
-                  , funMutual = Nothing
-                  , funAbstr = ConcreteDef
-                  , funDelayed = NotDelayed
-                  , funProjection = Nothing
-                  , funFlags = Data.Set.empty
-                  , funTerminates = Nothing
-                  , funExtLam = Nothing
-                  , funWith = Nothing }
-
-    -- generates the name of the case
-    let dataTypeNameString = concat $
-                             map (\x -> case x of
-                                          CN.Hole -> "_"
-                                          CN.Id s -> s) $
-                             toList $ CN.nameNameParts $ nameConcrete $ qnameName qname
-    caseName <- liftTCM $ freshName_ $ "case" ++ dataTypeNameString
-    let caseQName = QName{qnameModule = qnameModule qname, qnameName = caseName}
-
-    -- the final definition
-    let theCase = defaultDefn defaultArgInfo caseQName caseType WithoutK theDef
-
-    -- adds the definition to the tcm
-    liftTCM $ addConstant caseQName $ theCase
-
-    -- stores in dkstate that the case name of datatype qname is caseQName
-    dkState@DkState{caseOfData = caseOfData, belowOfData = belowOfData} <- get
-    put $ dkState{caseOfData = (\x -> if x == qname then Just caseQName else caseOfData x)}
-    return theCase
--}
 telNames :: Telescope -> [String]
 telNames EmptyTel = []
 telNames (ExtendTel _ Abs{absName = name, unAbs = nextTel}) = name : (telNames nextTel)
