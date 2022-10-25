@@ -12,7 +12,8 @@ import Agda.TypeChecking.CheckInternal
 data DkState = DkState
   {
     caseOfData :: QName -> Maybe QName,
-    belowOfData :: QName -> Maybe QName
+    belowOfData :: QName -> Maybe QName,
+    prfBelowOfData :: QName -> Maybe QName
   }
              
 type DkM a = StateT DkState TCM a

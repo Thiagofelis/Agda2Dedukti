@@ -5,3 +5,6 @@ open import Agda.Builtin.Sigma
 
 record UUnit (i : Agda.Primitive.Level) : Set i where
   constructor tt
+
+ttt : (i : Agda.Primitive.Level) → UUnit i
+ttt i = tt {i}

@@ -77,7 +77,8 @@ dkBackend' = Backend.Backend'
   , Backend.preCompile            = \opts -> do
       ref <- liftIO $
         newIORef DkState{ caseOfData = (\_ -> Nothing),
-                          belowOfData = (\_ -> Nothing)}
+                          belowOfData = (\_ -> Nothing),
+                          prfBelowOfData = (\_ -> Nothing)}
       return (opts, ref)
       -- ^ Called after type checking completes, but before compilation starts.  
   , Backend.postCompile           = \_ _ _ -> return ()
@@ -280,12 +281,12 @@ translateDef dkOpts def@(Defn {defCopy=isCopy, defName=n, theDef=d, defType=t, d
             if numIndices == 0 && optDkElimPattMatch dkOpts then do
               theCase <- mkConstruction TheCase n
               theBelow <- mkConstruction TheBelow n
-              --theCase <- mkCase n
-              --theBelow <- mkBelow n
+              --thePrfBelow <- mkConstruction ThePrfBelow n
               -- change the mutual ids, to print them in the right order
               translatedCase <- translateDef dkOpts theCase{defMutual=MutId m}
               translatedBelow <- translateDef dkOpts theBelow{defMutual=MutId m}
-              return $ translatedCase ++ translatedBelow
+              --translatedPrfBelow <- translateDef dkOpts thePrfBelow{defMutual=MutId m}
+              return $ translatedCase ++ translatedBelow -- ++ translatedPrfBelow
             else
               return []
           -- we translate the constructors the constructors
@@ -580,7 +581,8 @@ clause2rule nam c = do
               reportSDoc "toDk.clause" 25 $ return $ text "    Clause without type !"
               return r
             Just t  -> do
-              reportSDoc "toDk2" 3 $ return $ text "On a bien un type"
+              reportSDoc "toDk2" 3 $
+                ((text "On a bien un type: ") <+>) <$> (AP.prettyTCM t)
               r1 <- checkInternal' defaultAction r CmpLeq (unArg t)
               reportSDoc "toDk2" 3 $ return $ text "On a fait le premier chkIn"
               reconstructParameters' defaultAction (unArg t) r1

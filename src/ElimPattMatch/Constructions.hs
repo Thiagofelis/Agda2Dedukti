@@ -19,7 +19,7 @@ import Agda.TypeChecking.Sort
 import Agda.TypeChecking.CompiledClause
 import Agda.TypeChecking.Monad.Base
 import Agda.TypeChecking.Primitive.Base
-import Agda.Syntax.Scope.Base (allKindsOfNames, AbstractName(AbsName), anameName, ResolvedName (DefinedName))
+import Agda.Syntax.Scope.Base (allKindsOfNames, AbstractName(AbsName), anameName, ResolvedName (DefinedName, ConstructorName))
 import qualified Agda.Syntax.Concrete.Name as CN
 import Agda.TypeChecking.Monad.Context
 import Agda.TypeChecking.Monad.Debug
@@ -29,6 +29,8 @@ import Agda.Syntax.Common
 import Agda.Utils.Size
 import qualified Agda.Syntax.Concrete.Name as CN
 import Agda.Utils.Impossible
+
+import Agda.Utils.List1 (initLast)
 
 import Data.List.NonEmpty (fromList, toList)
 import Data.List (elemIndex)
@@ -61,22 +63,6 @@ removeParams tel@(ExtendTel x y) = if argInfoHiding (domInfo x) == Hidden
                                    then removeParams $ unAbs y
                                    else tel
                                         
--- given constructor c : {p : Pars} -> (a : Phi) -> D p,
--- builds type (a : Phi) -> P (c p a) in context i : Level, p : Pars, P : D p -> Set_i
-mkCaseMethodType :: QName -> TCM Type
-mkCaseMethodType conName =
-  do
-    consType <- defType <$> getConstInfo conName
-    tel' <- theTel <$> telView consType
-    -- raise it by one to make space for the P : D pars -> Set_i
-    let tel = raise 1 $ removeParams tel'
-    let conHead =
-          ConHead{conName = conName, conDataRecord = IsData, conInductive = Inductive, conFields = []}
-    let conInfo = ConOCon
-    let coDom = Var (size tel) [Apply $ defaultArg $ Con conHead conInfo $
-                                 map (\x -> Apply $ defaultArg $ Var x []) $ genList $ size tel]
-    sort <- addContext tel $ sortOf coDom
-    return $ telePi tel El {_getSort = sort, unEl = coDom}
 
 
 -- given type D with numPars parameters
@@ -98,22 +84,22 @@ mkMotiveType dataname numPars =
 
 -- given type D with numPars parameters
 -- build the type (x : D p) -> P x in context i : Level, p : Pars, P : D p -> Set_i
-mkEndType :: QName -> Int -> TCM Type
+mkEndType :: DkMonad m => QName -> Int -> m Type
 mkEndType dataname numPars =
   do
     let dataAppliedToPars = raise 1 $ Def dataname $ genElim numPars
-    sortDataAppliedToPars <- sortOf dataAppliedToPars
+    sortDataAppliedToPars <- liftTCM $ sortOf dataAppliedToPars
     let dataAppliedToPars' = El{_getSort = sortDataAppliedToPars, unEl = dataAppliedToPars}
 
     let returnTy = Var 1 $ genElim 1
-    sortReturnTy <- addContext ("x", defaultDom dataAppliedToPars') $ sortOf returnTy
+    sortReturnTy <- addContext ("x", defaultDom dataAppliedToPars') $ liftTCM $ sortOf returnTy
 --    reportSDoc "toDk.elimPattMatch" 20  $ AP.prettyTCM sortReturnTy
     let returnTy' = El{_getSort= sortReturnTy, unEl= returnTy}
     let ty =
           Pi (defaultDom dataAppliedToPars')
           (Abs{absName = "x", unAbs = returnTy'})
 
-    sortTy <- sortOf ty
+    sortTy <- liftTCM $ sortOf ty
     return El{_getSort = sortTy, unEl = ty}
 
 -- given type D with numPars parameters
@@ -122,28 +108,91 @@ mkBelowType :: DkMonad m => QName -> m Type
 mkBelowType qname =
   do
     -- gets parameters telescope
-    dType <- defType <$> getConstInfo qname
-    pars <- theTel <$> telView dType
+    pars <- theTel <$> (telView =<< defType <$> getConstInfo qname)
 
-    levelType <- liftTCM $ levelType
     -- tel = i : Level, p : Pars
-    let tel = ExtendTel (defaultDom levelType) (Abs{absName = "i", unAbs = pars})
-
-    motiveTy <- liftTCM $ addContext tel $ mkMotiveType qname $ length pars
+    tel <- do
+      levelType <- liftTCM $ levelType
+      return $ ExtendTel (defaultDom levelType) (Abs{absName = "i", unAbs = pars})
 
     -- tel' = i : Level, p : Pars, P : D p -> Set_i
-    let tel' =
-          tel `abstract` (ExtendTel (defaultDom motiveTy) Abs{absName =  "P", unAbs = EmptyTel})
+    tel' <- do
+      motiveTy <- liftTCM $ addContext tel $ mkMotiveType qname $ length pars
+      return $
+        tel `abstract` (ExtendTel (defaultDom motiveTy) Abs{absName =  "P", unAbs = EmptyTel})
 
     -- TODO : the end universe (Set i) can actually increase when using higher-order recursion
     -- whose indexing type is at universe > 0
     end <- liftTCM $ addContext tel $ raise 1 <$> mkMotiveType qname (length pars)
+    let finalTy = telePi_ tel' $ end
 
-    let caseType = telePi_ tel' $ end
-    _ <- liftTCM $ checkType' caseType -- checks it is well-sorted
-    reportSDoc "toDk.elimPattMatch.below" 20 $ AP.prettyTCM caseType
-    return caseType
+    _ <- liftTCM $ checkType' finalTy -- checks it is well-sorted
+    reportSDoc "toDk.elimPattMatch.below" 20 $ AP.prettyTCM finalTy
+    return finalTy
 
+-- generates the type
+-- i -> (p : Pars) -> (P : D p -> Set_i) -> (p : (x : D) -> BelowD P x -> P x) -> (x : D) -> P x
+mkPrfBelowType :: DkMonad m => QName -> m Type
+mkPrfBelowType qname =
+  do
+    -- gets parameters telescope
+    pars <- theTel <$> (telView =<< defType <$> getConstInfo qname)
+
+    -- tel = i : Level, p : Pars
+    tel <- do
+      levelType <- liftTCM $ levelType
+      return $ ExtendTel (defaultDom levelType) (Abs{absName = "i", unAbs = pars})
+
+    -- tel' = i : Level, p : Pars, P : D p -> Set_i
+    tel' <- do
+      motiveTy <- liftTCM $ addContext tel $ mkMotiveType qname $ length pars
+      return $
+        tel `abstract` (ExtendTel (defaultDom motiveTy) Abs{absName =  "P", unAbs = EmptyTel})
+
+    -- generates the singleton tel i : Level, p : Pars, P : D p -> Set_i |- x : D
+    -- and the type i : Level, p : Pars, P : D p -> Set_i, x : D |- P x
+    TelV{theTel = xD, theCore = pX} <-
+      telView =<< (addContext tel' $ mkEndType qname (length pars))
+
+    -- generates the type i : Level, p : Pars, P : D p -> Set_i, x : D |- BelowD P x
+    belowP <- do
+      reportSDoc "toDk.elimPattMatch.below" 20 $ AP.prettyTCM (tel' `abstract` xD)
+      DkState{belowOfData = belowOfData} <- get
+      let Just qnameOfBelow = belowOfData qname
+      let te = Def qnameOfBelow $ genElim 3
+      addContext (tel' `abstract` xD) $
+        reportSDoc "toDk.elimPattMatch.below" 20 $ AP.prettyTCM te
+      addContext (tel' `abstract` xD) $ typeOfTerm te
+    reportSDoc "toDk.elimPattMatch.below" 20 $ return $ text "oi"
+    -- tel' = i : Level, p : Pars, P : D p -> Set_i, p : (x : D) -> BelowD P x -> P x
+    tel'' <- do
+      let belowP' = ExtendTel (defaultDom belowP) Abs{absName =  "", unAbs = EmptyTel}
+      let p = telePi_ xD $ telePi_ belowP' $ raise 1 $ pX
+      return $ tel' `abstract` (ExtendTel (defaultDom p) Abs{absName =  "p", unAbs = EmptyTel})
+
+    let finalTy = telePi_ (tel'' `abstract` (raise 1 xD)) (raiseFrom 1 1 pX)
+    _ <- liftTCM $ checkType' finalTy -- checks it is well-sorted
+
+    reportSDoc "toDk.elimPattMatch.below" 20 $ AP.prettyTCM finalTy
+    return finalTy
+
+
+-- given constructor c : {p : Pars} -> (a : Phi) -> D p,
+-- builds type (a : Phi) -> P (c p a) in context i : Level, p : Pars, P : D p -> Set_i
+mkCaseMethodType :: QName -> TCM Type
+mkCaseMethodType conName =
+  do
+    consType <- defType <$> getConstInfo conName
+    tel' <- theTel <$> telView consType
+    -- raise it by one to make space for the P : D pars -> Set_i
+    let tel = raise 1 $ removeParams tel'
+    let conHead =
+          ConHead{conName = conName, conDataRecord = IsData, conInductive = Inductive, conFields = []}
+    let conInfo = ConOCon
+    let coDom = Var (size tel) [Apply $ defaultArg $ Con conHead conInfo $
+                                 map (\x -> Apply $ defaultArg $ Var x []) $ genList $ size tel]
+    sort <- addContext tel $ sortOf coDom
+    return $ telePi tel El {_getSort = sort, unEl = coDom}
 
 mkCaseType :: DkMonad m => QName -> m Type
 mkCaseType qname =
@@ -152,30 +201,33 @@ mkCaseType qname =
     Datatype{dataCons = cons} <- theDef <$> getConstInfo qname
 
     -- gets parameters telescope
-    dType <- defType <$> getConstInfo qname
-    pars <- theTel <$> telView dType
+    pars <- theTel <$> (telView =<< defType <$> getConstInfo qname)
 
-    levelType <- liftTCM $ levelType
     -- tel = i : Level, p : Pars
-    let tel = ExtendTel (defaultDom levelType) (Abs{absName = "i", unAbs = pars})
-
-    motiveTy <- liftTCM $ addContext tel $ mkMotiveType qname $ length pars
+    tel <- do
+      levelType <- liftTCM $ levelType
+      return $ ExtendTel (defaultDom levelType) (Abs{absName = "i", unAbs = pars})
 
     -- tel' = i : Level, p : Pars, P : D p -> Set_i
-    let tel' =
-          tel `abstract` (ExtendTel (defaultDom motiveTy) Abs{absName =  "P", unAbs = EmptyTel})
+    tel' <- do
+      motiveTy <- liftTCM $ addContext tel $ mkMotiveType qname $ length pars
+      return $
+        tel `abstract` (ExtendTel (defaultDom motiveTy) Abs{absName =  "P", unAbs = EmptyTel})
 
-    methods <- liftTCM $ addContext tel' $ mapM mkCaseMethodType cons
-    let methodsRaised =
-          reverse $ fst $
-          foldl (\(l, n) x -> ((raise n x, "M_" ++ (show n)) : l, n + 1)) ([], 0) methods
 
     -- tel'' = i : Level, p : Pars, P : D p -> Set_i, m_j : (a : Phi_j -> P (c_j p a))
-    let tel'' = foldl
-                (\acc (ty, s) -> acc `abstract`
-                                 (ExtendTel (defaultDom ty) Abs{absName=s, unAbs=EmptyTel}))
-                tel' methodsRaised
-    end <- liftTCM $ addContext tel' $ mkEndType qname $ length pars
+    tel'' <- do
+      methods <- liftTCM $ addContext tel' $ mapM mkCaseMethodType cons
+
+      let methodsRaised =
+            reverse $ fst $
+            foldl (\(l, n) x -> ((raise n x, "M_" ++ (show n)) : l, n + 1)) ([], 0) methods
+
+      return $ foldl
+        (\acc (ty, s) -> acc `abstract` (ExtendTel (defaultDom ty) Abs{absName=s, unAbs=EmptyTel}))
+            tel' methodsRaised
+
+    end <- addContext tel' $ mkEndType qname $ length pars
 
     let caseType = telePi_ tel'' $ raise (length cons) end   
     _ <- liftTCM $ checkType' caseType -- checks it is well-sorted
@@ -183,33 +235,32 @@ mkCaseType qname =
     return caseType
 
 
-mkHOTel :: DkMonad m => QName -> QName -> m [(Int, Telescope)]
-mkHOTel dName conName =
+-- given a constructor c : ϕ -> D, we return a list containing the arguments Δ of recursive
+-- positions Δ -> D in ϕ, along with the indices of such positions in ϕ
+mkRecArgsTel :: DkMonad m => QName -> QName -> m [(Int, Telescope)]
+mkRecArgsTel dName conName =
   do
-    consType <- defType <$> getConstInfo conName
-    consTel <-theTel <$> telView consType
-    let telList = flattenTel consTel
+    consTel <- theTel <$> (telView =<< defType <$> getConstInfo conName)
+    let telList = flattenTel consTel -- list of all entries in consTel, weakened up to consTel
 
-    -- CONTINUER HERE
+    -- we go through reversed telList and if we find a type of the form Δ -> D, we save Δ
+    -- along with its index on the list
     ho_tel <- snd <$>
       foldM
       (\vrec x -> do
           let (n, l) = vrec
           TelV{theTel = tel, theCore = codom} <- telView (unDom x)
-
           case unEl codom of
-            Def qname _ -> return (if dName == qname then (n + 1, (n, tel) : l) else (n+1, l))
+            Def qname _ | dName == qname -> return (n + 1, (n, tel) : l)
             _ -> return (n+1,l))
       (0, [])
       (reverse telList)
 
-    -- print to debug
+    -- print to debuging
     _ <- addContext consTel $
-      mapM (\x -> reportSDoc "toDk.elimPattMatch.below" 20 $ AP.prettyTCM x)
-      ho_tel
+      mapM (\x -> reportSDoc "toDk.elimPattMatch.below" 20 $ AP.prettyTCM x) ho_tel
 
     -- we raise it from Pars, Delta, Phi to Pars, x : P, Delta, Phi
-
     return $ map (\(n, x) -> (n, raiseFrom (length $ removeParams consTel) 1 x)) ho_tel
 
 typeOfTerm :: DkMonad m => Term -> m Type
@@ -249,6 +300,59 @@ getUnitQName = do
     DefinedName _ (AbsName{anameName = unit}) _ <- liftTCM $ resolveName' allKindsOfNames Nothing $
         CN.Qual (CN.simpleName "elimPattPrelude") (CN.QName $ CN.simpleName "UUnit")
     return unit
+
+-- returns the name of constructor tt of unit
+getTTQName :: DkMonad m => m QName
+getTTQName = do -- todo: get rid of alias ttt
+    DefinedName _ (AbsName{anameName = tt}) _ <- liftTCM $ resolveName' allKindsOfNames Nothing $
+        CN.Qual (CN.simpleName "elimPattPrelude") (CN.QName $ CN.simpleName "ttt")
+    return tt
+
+-- let c : Delta -> (Phi_{n-1} -> D) .. -> (Phi_0 -> D) -> D
+-- given an index ix, we return the term
+-- i, pars, P, p, Delta, h_{n-1} ...  h_0  |-
+--    λ (v : Phi_ix). ( prfBelow i pars P p (h_i v),  p (h_i v) (prfBelow i pars P p (h_i v)) )
+mkPrfBelowLam :: DkMonad m =>
+  QName -> -- qname of D
+  QName -> -- qname of constructor
+  Int -> -- index of the rec argument in which we are doing abstraction
+  Telescope -> -- the telescope of arguments of the recursive argument (Phi_ix)
+  m Term
+mkPrfBelowLam dName consName ix ixArgs =
+  do
+    let numIxArgs = length ixArgs -- lenght of Phi_ix
+    numArgs <- -- number of args the constructor takes
+      length <$> removeParams <$> theTel <$> (telView =<< defType <$> getConstInfo consName)
+
+    -- builds the term i, pars, P, p, ϕ, v : Phi_i |- prfBelow i pars P p (h_i v)
+    l <- do
+          DkState{prfBelowOfData = prfBelowOfData} <- get
+          let Just prfBelowName = prfBelowOfData dName
+
+          Datatype{dataPars = numPars} <- theDef <$> getConstInfo dName
+
+          let i_ = [Apply $ defaultArg $ Var (numIxArgs + numArgs + 2 + numPars) []]
+          let pars_ = raise (numIxArgs + numArgs + 2) $ genElim numPars
+          let pP_ = [Apply $ defaultArg $ Var (numIxArgs + numArgs + 1) []]
+          let p_ = [Apply $ defaultArg $ Var (numIxArgs + numArgs) []]
+          let hi_ = [Apply $ defaultArg $ Var (numIxArgs + ix) $ genElim numIxArgs]
+          return $ Def prfBelowName (i_ ++ pars_ ++ pP_ ++ p_ ++ hi_)
+
+    -- builds the term i, pars, P, p, ϕ, v : Phi_i |- p (h_i v) (prfBelow i pars P p (h_i v))
+    let r =
+          let hi_ = [Apply $ defaultArg $ Var (numIxArgs + ix) $ genElim numIxArgs] in
+          let l' = [Apply (defaultArg l)] in
+          Var (numIxArgs + numArgs) (hi_ ++ l')
+
+    -- builds λ v. ( prfBelow i pars P p (h_i v),  p (h_i v) (prfBelow i pars P p (h_i v)) )
+    finalTerm <- do
+      Just sig <- getSigmaKit
+      let sig_constructor = conName $ sigmaCon $ sig
+      return $ teleLam ixArgs $ Def sig_constructor [Apply (defaultArg l), Apply (defaultArg r)]
+
+    reportSDoc "toDk.elimPattMatch.below" 20 $ AP.prettyTCM finalTerm
+    return finalTerm
+
 
 -- let c : Delta -> (Phi_{n-1} -> D) .. -> (Phi_0 -> D) -> D
 -- given an index ix, we return the type
@@ -311,6 +415,42 @@ assembleClause consName gamma consTel clauseTy body =
         , clauseEllipsis = NoEllipsis
         , clauseWhereModule = Nothing}
 
+mkPrfBelowClause :: DkMonad m => QName -> Type -> QName -> m Clause
+mkPrfBelowClause dname ty consName = do
+  -- Γ, ϕ ⊢ clauseTy, where ϕ are the constructor arguments
+  (gamma, consTel, clauseTy) <- mkClauseTele dname ty consName
+
+  body <- do
+    let clauseTel = gamma `abstract` consTel
+
+    -- gets the arguments telescopes of recursive positions in the type of consName
+    ho_tel <- mkRecArgsTel dname consName
+
+    -- generates list with the λ v : Phi_i. (below ..., P (h_i v) (below ...))
+    -- for each recursive argument of the constructor
+    belows <- addContext clauseTel $
+      mapM (\(i, tel) -> mkPrfBelowLam dname consName i tel) ho_tel
+
+    -- gets sig constructor _,_
+    Just sig <- getSigmaKit
+    let sig_cons = conName $ sigmaCon $ sig
+
+    -- builds the body by taking the product of everyone in belows
+    ttt <- getTTQName
+    case belows of
+      [] -> do -- we build p (c args) tt
+        tt <- reduce $  Def ttt $ [Apply $ defaultArg $ Var (length clauseTel - 1) []]
+        let c = Def consName $ genElim $ length consTel
+        return $ Var (length clauseTel - 3) $ [Apply $ defaultArg c, Apply $ defaultArg tt]
+
+      x : l ->
+        return $ foldl (\v x -> Def sig_cons [Apply $ defaultArg x, Apply $ defaultArg v]) x l
+
+  let clause = assembleClause consName gamma consTel clauseTy body
+
+  reportSDoc "toDk.elimPattMatch.below" 20 $ AP.prettyTCM $ clause
+  return clause
+
 
 mkBelowClause :: DkMonad m => QName -> Type -> QName -> m Clause
 mkBelowClause dname belowTy consName =
@@ -321,10 +461,8 @@ mkBelowClause dname belowTy consName =
     body <- do
       let clauseTel = gamma `abstract` consTel
 
-      -- gets the higher order args telescopes
-      ho_tel <- mkHOTel dname consName
-
-      unit <- getUnitQName
+      -- gets the arguments telescopes of recursive positions in the type of consName
+      ho_tel <- mkRecArgsTel dname consName
 
       -- generates list with the (v : Phi_i -> belowD i pars P (h_i v) /\ P (h_i v))
       -- for each recursive argument of the constructor
@@ -332,6 +470,7 @@ mkBelowClause dname belowTy consName =
         mapM (\(i, tel) -> mkBelowProduct dname consName i tel) ho_tel
 
       -- builds the body by taking the product of everyone in belows
+      unit <- getUnitQName
       case belows of
         [] -> typeOfTerm $ Def unit $ [Apply $ defaultArg $ Var (length clauseTel - 1) []]
         x : l -> addContext clauseTel $ foldM (\v x -> mkProd x v) x l
@@ -390,12 +529,18 @@ mkConstruction construction dQName =
     ty <- case construction of
       TheCase -> mkCaseType dQName
       TheBelow -> mkBelowType dQName
+      ThePrfBelow -> mkPrfBelowType dQName
       _ -> __IMPOSSIBLE__
 
     -- creates name
     constrQName <- do
-      dQNameString <- liftTCM $ render <$> AP.prettyTCM dQName
-      let str = case construction of TheCase -> "case"; TheBelow -> "below"; _ -> __IMPOSSIBLE__
+      dQNameString <- liftTCM $ map (\c -> if c == '.' then '-' else c) <$>
+        render <$> AP.prettyTCM dQName
+      let str = case construction of
+            TheCase -> "case"
+            TheBelow -> "below"
+            ThePrfBelow -> "prfBelow"
+            _ -> __IMPOSSIBLE__
       constructionName <- liftTCM $ freshName_ $ str ++ dQNameString
       return QName{qnameModule = qnameModule dQName, qnameName = constructionName}
 
@@ -412,6 +557,9 @@ mkConstruction construction dQName =
       TheBelow ->
         dkState{belowOfData =
                 (\x -> if x == dQName then Just constrQName else belowOfData dkState x)}
+      ThePrfBelow ->
+        dkState{prfBelowOfData =
+                (\x -> if x == dQName then Just constrQName else prfBelowOfData dkState x)}
       _ -> __IMPOSSIBLE__
 
     -- computes the clauses
@@ -420,6 +568,7 @@ mkConstruction construction dQName =
       case construction of
         TheCase -> mapM (\consname -> mkCaseClause dQName ty consname) cons
         TheBelow -> mapM (\consname -> mkBelowClause dQName ty consname) cons
+        ThePrfBelow -> mapM (\consname -> mkPrfBelowClause dQName ty consname) cons
         _ -> __IMPOSSIBLE__
 
     -- adds the clauses
